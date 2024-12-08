@@ -1,0 +1,88 @@
+import { LineEdit, ComboBox } from "std-widgets.slint";
+
+export component TInput inherits LineEdit {
+    in property <string> placeholder: "cc#";
+    width: 60px;
+    placeholder-text: root.placeholder;
+    font-size: 12px;
+}
+
+export component Submit inherits TouchArea {
+    in-out property <string> text;
+    in-out property <brush> background: rgb(164, 164, 164);
+    callback on_clicked();
+    Rectangle {
+        border-radius: 10px;
+        border-color: black;
+        border-width: 1px;
+        background: root.pressed ? root.background.darker(20%) : root.background;
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            Text {
+                vertical-alignment: center;
+                horizontal-alignment: center;
+                color: black;
+                text: root.text;
+            }
+        }
+    }
+    clicked => { on_clicked(); }
+}
+
+export component SingleForm inherits HorizontalLayout {
+    callback clicked(string);
+    spacing: 5px;
+    tinput := TInput{}
+    Submit {
+        text: "send";
+        clicked => {
+            tinput.clear-focus();
+            clicked(tinput.text);
+        }
+    }
+}
+
+export component ExposeForm inherits HorizontalLayout {
+    in property <[string]> placeholders;
+    callback clicked(string, string, string);
+
+    spacing: 5px;
+    cc := TInput{placeholder: placeholders[0];}
+    type := ComboBox {
+                width: 90px;
+                model: ["empty"];
+                current-value: "empty";
+    }
+    desc := TInput{placeholder: placeholders[2];}
+    Submit {
+        text: "send";
+        clicked => {
+            cc.clear-focus();
+            type.clear-focus();
+            desc.clear-focus();
+            clicked(cc.text, type.current-value, desc.text);
+        }
+    }
+}
+
+export component Login inherits VerticalLayout {
+    alignment: center;
+    spacing: 5px;
+    callback connect-attempt(string, string);
+
+    url := LineEdit {
+        placeholder-text: "url";
+        font-size: 12px;
+    }
+    pass := LineEdit {
+        placeholder-text: "pass";
+        font-size: 12px;
+    }
+    Submit {
+        text: "login";
+        clicked => {connect-attempt(url.text,pass.text)}
+    }
+}

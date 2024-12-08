@@ -1,0 +1,58 @@
+import { Button } from "std-widgets.slint";
+
+component Indicator inherits HorizontalLayout {
+    in-out property <bool> isOn: false;
+    Rectangle {
+        border-radius: 10px;
+        border-color: black;
+        border-width: 1px;
+        background: isOn ? rgb(167,227,164) : rgb(248,168,168);
+        preferred-width: 50px;
+
+        VerticalLayout {
+            alignment: center;
+            @children
+        }
+    }
+}
+
+export component Switch inherits Rectangle {
+    property <bool> isOn: false;
+    Indicator {
+        isOn: root.isOn;
+        TouchArea {
+            HorizontalLayout {
+                alignment: isOn ? start : end;
+                padding-left: 10px;
+                padding-right: 10px;
+
+                Rectangle {
+                    border-radius: 10px;
+                    background: black;
+                    preferred-width: 10px;
+                    preferred-height: 10px;
+                }
+
+            }
+            clicked => {
+                isOn = !isOn;
+            }
+        }
+    }
+}
+
+export component Status inherits Rectangle {
+    Indicator {
+        VerticalLayout{
+            alignment: center;
+
+            HorizontalLayout {
+                alignment: center;
+                Text {
+                    color: black;
+                    text: "bruh";
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,12 @@
+export component MenuItem inherits HorizontalLayout {
+    in-out property text <=> txt.text;
+    spacing: 10px;
+    alignment: start;
+    txt := Text {
+        width: parent.width / 3;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+        color: black;
+    }
+    @children
+}

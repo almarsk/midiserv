@@ -1,0 +1,123 @@
+import "./ChivoMono-VariableFont_wght.ttf";
+import { Button, ComboBox, TextEdit, ListView } from "std-widgets.slint";
+import { MenuItem } from "./components/menu-item.slint";
+import { Switch, Status } from "./components/indicators.slint";
+import { SingleForm, ExposeForm, Submit, Login } from "./components/forms.slint";
+
+struct Port { name: string, id: string }
+
+export global AppState {
+    callback hide_device(string);
+    callback expose_device(string, string, string);
+    callback choose_midi_port(int);
+    callback send_dummy_cc(string);
+    callback copy_to_clipboard();
+    callback clear_all();
+    callback disconnect();
+    callback paste();
+    callback login(string, string);
+    in property <[string]> midi-ports;
+    in property <bool> connected_to_server: false;
+}
+
+export component AppWindow inherits Window {
+    property <int> menu_buttons: 4;
+    in property <[string]> exposed_devices;
+    property <int> default-padding: 10;
+
+    title: "midiserv";
+    background: rgb(200,200,200);
+    min-height: (AppState.connected_to_server ? 450 : 180) * 1px;
+    max-height: (AppState.connected_to_server ? 10000 : 180) * 1px;
+    min-width: 500px;
+    preferred-width: 500px;
+    default-font-family: "Chivo Mono";
+    default-font-size: 12px;
+
+    VerticalLayout {
+        alignment: start;
+        padding: default-padding * 1px;
+        Text {
+            text: "midiserv";
+            font-size: 30px;
+            color:black;
+        }
+    if !AppState.connected_to_server : Login{connect-attempt(url, pass) => {AppState.login(url, pass)}}
+
+    if AppState.connected_to_server : VerticalLayout {
+            VerticalLayout {
+                padding-top: 30px;
+                spacing: 10px;
+
+                MenuItem{text: "connection status"; Status{}}
+                MenuItem{text: "passthrough allowed"; Switch{}}
+                MenuItem{
+                    text: "send dummy cc";
+                    SingleForm {
+                        clicked(cc) => {AppState.send_dummy_cc(cc)}
+                    }
+                }
+                MenuItem{
+                    width: parent.width;
+                    text: "select midi port";
+                    port-selector := ComboBox {
+                        min-width: parent.width - 210px;
+                        model: AppState.midi-ports;
+                        selected => {AppState.choose_midi_port(port-selector.current_index)}
+                        current-value: "";
+                    }
+                }
+                MenuItem{
+                    text: "expose device";
+                    ExposeForm{
+                        placeholders: ["cc#","type","desc"];
+                        clicked(t1,t2,t3) =>
+                            {AppState.expose_device(t1, t2, t3)}
+                    }
+                }
+
+                HorizontalLayout{
+                    property <int> color: 165;
+                    alignment: center;
+                    Path {
+                        width: parent.width * 0.85;
+                        commands: "M 0 0 H 100";
+                        stroke: rgb(color,color,color);
+                        stroke-width: 1px;
+                    }
+                }
+
+                currently-exposed := VerticalLayout {
+                    Text {text: "currently exposed";  horizontal-alignment: center;}
+                    HorizontalLayout {
+                        alignment: center;
+                        ListView {
+                            height: root.height - 360px;
+                            width: root.width/2;
+                            for device[index] in exposed_devices :
+                                HorizontalLayout {
+                                    padding: 1px;
+                                    Submit {
+                                        text: device;
+                                        clicked => { AppState.hide_device(index) }
+                                    }
+                                }
+                        }
+                    }
+                }
+            }
+            VerticalLayout {
+            alignment: end;
+                padding: default-padding * 1px;
+                HorizontalLayout {
+                    padding-top: 20px;
+                    spacing: 5px;
+                    Submit{text: "paste"; clicked => {AppState.paste();} width: (parent.width - default-padding * 1px)/menu_buttons;}
+                    Submit{text: "copy exposed"; clicked => {AppState.copy_to_clipboard()} width: (parent.width - default-padding * 1px)/menu_buttons;}
+                    Submit{text: "clear all"; background: rgb(248,168,168); clicked => {AppState.clear_all()} width: (parent.width - default-padding * 1px)/menu_buttons;}
+                    Submit{text: "disconnect"; background: rgb(248,168,168); clicked => {AppState.disconnect()} width: (parent.width - default-padding * 1px)/menu_buttons;}
+                }
+            }
+        }
+    }
+}
