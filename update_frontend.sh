@@ -2,7 +2,7 @@
 
 cd frontend
 
-DEST_PATH="../crate_midiserv/static"
+DEST_PATH="../crate_midiserv/build"
 
 # Check if the destination directory exists, if not create it
 if [ ! -d "$DEST_PATH" ]; then
@@ -11,10 +11,9 @@ fi
 
 npm run build
 
-cp -r dist/index.html "$DEST_PATH"
-
-rm -r ../crate_midiserv/assets
-cp -r dist/assets ../crate_midiserv
+rm -r $DEST_PATH/*
+cp -r dist/index.html $DEST_PATH/
+cp -r dist/assets $DEST_PATH
 
 cd ..
 

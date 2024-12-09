@@ -8,8 +8,8 @@ use tower_http::services::ServeDir;
 async fn main() {
     let app = Router::new()
         .fallback(fallback)
-        .nest_service("/", ServeDir::new("static"))
-        .nest_service("/assets", ServeDir::new("assets"))
+        .nest_service("/", ServeDir::new("build"))
+        .nest_service("/assets", ServeDir::new("build/assets"))
         .route("/ws", get(ws_handler));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
