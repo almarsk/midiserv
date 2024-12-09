@@ -12,6 +12,8 @@ fi
 npm run build
 
 cp -r dist/index.html "$DEST_PATH"
+
+rm -r ../crate_midiserv/assets
 cp -r dist/assets ../crate_midiserv
 
 cd ..
