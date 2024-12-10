@@ -2,6 +2,6 @@
 resolver = "2"
 
 members=[
-    "crate_midiloc",
-    "crate_midiserv"
+    "local",
+    "server"
 ]

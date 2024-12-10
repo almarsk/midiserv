@@ -1,10 +1,12 @@
 [package]
-name = "midiserv"
+name = "server"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 axum = { version = "0.7.9", features = ["ws", "tokio"] }
+serde = "1.0.215"
+serde_json = "1.0.133"
 tokio = { version = "1.42.0", features = ["full"] }
 tokio-tungstenite = "0.24.0"
 tower-http = { version = "0.6.2", features = ["cors", "fs"] }

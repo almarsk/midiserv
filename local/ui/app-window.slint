@@ -27,7 +27,7 @@ export component AppWindow inherits Window {
 
     title: "midiserv";
     background: rgb(200,200,200);
-    min-height: (AppState.connected_to_server ? 450 : 180) * 1px;
+    min-height: (AppState.connected_to_server ? 500 : 180) * 1px;
     max-height: (AppState.connected_to_server ? 10000 : 180) * 1px;
     min-width: 500px;
     preferred-width: 500px;
@@ -108,14 +108,13 @@ export component AppWindow inherits Window {
             }
             VerticalLayout {
             alignment: end;
-                padding: default-padding * 1px;
                 HorizontalLayout {
                     padding-top: 20px;
-                    spacing: 5px;
-                    Submit{text: "paste"; clicked => {AppState.paste();} width: (parent.width - default-padding * 1px)/menu_buttons;}
-                    Submit{text: "copy exposed"; clicked => {AppState.copy_to_clipboard()} width: (parent.width - default-padding * 1px)/menu_buttons;}
-                    Submit{text: "clear all"; background: rgb(248,168,168); clicked => {AppState.clear_all()} width: (parent.width - default-padding * 1px)/menu_buttons;}
-                    Submit{text: "disconnect"; background: rgb(248,168,168); clicked => {AppState.disconnect()} width: (parent.width - default-padding * 1px)/menu_buttons;}
+                    spacing: default-padding / 2 * 1px;
+                    Submit{text: "paste"; clicked => {AppState.paste();}}
+                    Submit{text: "copy "; clicked => {AppState.copy_to_clipboard()} }
+                    Submit{text: "clear"; background: rgb(248,168,168); clicked => {AppState.clear_all()} }
+                    Submit{text: "stop "; background: rgb(248,168,168); clicked => {AppState.disconnect()} }
                 }
             }
         }

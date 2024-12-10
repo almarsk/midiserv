@@ -11,6 +11,7 @@ pub struct Midi {
 
 pub enum MidiCommand {
     Dummy(u8),
+    Signal(u8, u8),
     Port(usize),
 }
 

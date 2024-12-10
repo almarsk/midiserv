@@ -11,7 +11,10 @@ use exposed_devices::DeviceCommand;
 use flume::bounded;
 use flume::Receiver;
 use flume::Sender;
+use futures_util::stream::StreamExt;
 use midi::MidiCommand;
+use reqwest::Client;
+use serde_json::Value;
 use slint::CloseRequestResponse;
 use slint::ComponentHandle;
 use slint::{ModelRc, SharedString, VecModel};
@@ -19,6 +22,7 @@ use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio_tungstenite::connect_async;
 
 slint::include_modules!();
 
@@ -42,11 +46,72 @@ fn main() -> Result<(), Box<dyn Error>> {
     let exp_dev = Rc::new(VecModel::from(vec![]));
     app.set_exposed_devices(ModelRc::from(Rc::clone(&exp_dev)));
 
+    let (midi_tx, midi_rx): (Sender<MidiCommand>, Receiver<MidiCommand>) = bounded(10);
+
     let (device_command_tx, device_command_rx): (Sender<DeviceCommand>, Receiver<DeviceCommand>) =
         bounded(10);
 
     let (device_response_tx, device_response_rx): (Sender<Vec<String>>, Receiver<Vec<String>>) =
         bounded(10);
+
+    let (login_tx, login_rx): (Sender<Login>, Receiver<Login>) = bounded(10);
+    let (login_response_tx, login_response_rx): (Sender<bool>, Receiver<bool>) = bounded(10);
+
+    // todo let shutdown_rx_clone = shutdown_rx.clone();
+    let midi_tx_clone = midi_tx.clone();
+    rt.spawn(async move {
+        while let Ok(login) = login_rx.recv_async().await {
+            let url = format!("http://{}/login", &login.url);
+            println!("{}", url);
+
+            if let Ok(response) = Client::new().get(&url).send().await {
+                if let Ok(body) = response.text().await {
+                    if let Ok(json) = serde_json::from_str::<Value>(&body) {
+                        if let Some(success) = json.get("success").and_then(Value::as_bool) {
+                            println!("http done");
+                            let url = format!("ws://{}/ws_loc", login.url);
+
+                            match connect_async(url).await {
+                                Ok((mut ws_stream, _)) => {
+                                    let _ = login_response_tx.send(success);
+                                    println!("lesgo");
+                                    while let Some(Ok(message)) = ws_stream.next().await {
+                                        let message = message.into_data();
+                                        let cc = message.get(0);
+                                        let value = message.get(1);
+
+                                        if let (Some(cc), Some(value)) = (cc, value) {
+                                            match midi_tx_clone
+                                                .send(MidiCommand::Signal(*cc, *value))
+                                            {
+                                                Ok(o) => println!("yo"),
+                                                Err(e) => println!("nah"),
+                                            };
+                                        } else {
+                                            println!("nuh-uh")
+                                        };
+                                        println!("Received message: {:?}", message)
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("{e}");
+                                    let _ = login_response_tx.send(false);
+                                }
+                            }
+                        } else {
+                            let _ = login_response_tx.send(false);
+                        }
+                    } else {
+                        let _ = login_response_tx.send(false);
+                    }
+                } else {
+                    let _ = login_response_tx.send(false);
+                }
+            } else {
+                let _ = login_response_tx.send(false);
+            }
+        }
+    });
 
     let shutdown_rx_clone = shutdown_rx.clone();
     rt.spawn(async move {
@@ -61,9 +126,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             DeviceCommand::Push(d) => exposed.lock().await.push(d),
                             DeviceCommand::Remove(index) => exposed.lock().await.remove(index),
                             DeviceCommand::Clear => exposed.lock().await.clear(),
-                            DeviceCommand::CopyToClipBoard => {
-                                exposed.lock().await.copy_to_clipboard()
-                            },
+                            DeviceCommand::CopyToClipBoard => exposed.lock().await.copy_to_clipboard(),
                             DeviceCommand::GetJoined => {
                                 let _ = device_response_tx
                                     .send_async(exposed.lock().await.get_joined())
@@ -83,8 +146,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    let (midi_tx, midi_rx): (Sender<MidiCommand>, Receiver<MidiCommand>) = bounded(10);
-
     let shutdown_rx_clone = shutdown_rx.clone();
     rt.spawn(async move {
         let midi = Arc::new(Mutex::new(midi));
@@ -95,9 +156,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                  if let Ok(command) = command_option {
                      let mut midi = midi.lock().await;
                      match command {
-                         MidiCommand::Dummy(cc) => {
-                             midi.send_cc(cc, 0)
-                         }
+                         MidiCommand::Dummy(cc) => midi.send_cc(cc, 0),
+                         MidiCommand::Signal(cc, value) => midi.send_cc(cc, value),
                          MidiCommand::Port(port) => midi.update_port(port),
                      }
                     }
@@ -200,8 +260,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     });
 
     let app_clone = app.clone_strong();
-    app.global::<AppState>().on_login(move |_url, _pass| {
-        app_clone.global::<AppState>().set_connected_to_server(true);
+    app.global::<AppState>().on_login(move |url, pass| {
+        let _ = login_tx.send(Login {
+            url: url.to_string(),
+            _pass: pass.to_string(),
+        });
+
+        app_clone
+            .global::<AppState>()
+            .set_connected_to_server(login_response_rx.recv().unwrap_or(false));
     });
 
     let app_clone = app.clone_strong();
@@ -221,6 +288,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     });
     Ok(())
+}
+
+struct Login {
+    pub url: String,
+    pub _pass: String,
 }
 
 struct ExposedState {

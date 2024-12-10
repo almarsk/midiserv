@@ -2,7 +2,7 @@
 
 cd frontend
 
-DEST_PATH="../crate_midiserv/build"
+DEST_PATH="../server/build"
 
 # Check if the destination directory exists, if not create it
 if [ ! -d "$DEST_PATH" ]; then
