@@ -1,21 +1,25 @@
-refactor ports in local so that they get renewed when dropdown menu is opened
-
-password from local
-
-general security
-
+refactor ports in local so that they get renewed when dropdown menu upon refresh button click
 refactor ui backend
+
+login
+    password
+    check for existing connection and refuse if it exists
+    if success return uitypes list
 
 connection status
 
-passthrough allowed
+passthrough allowed ?
 
 exposed device communication
 
-server exposed device pool logic
-
-dynamic user frontend
+simple server exposed device pool logic
 
 ui types scafolding
+reset button in ui
 
-reset button
+disconnect button
+
+dynamic user frontend
+advanced server exposed device pool logic
+
+general security

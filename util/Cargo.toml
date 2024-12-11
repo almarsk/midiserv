@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 clipboard = "0.5.0"
 midir = "0.10.1"
+strum = "0.26.3"
+strum_macros = "0.26.4"
 
 [lib]
 name = "util"

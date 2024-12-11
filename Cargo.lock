@@ -5064,6 +5064,8 @@ version = "0.1.0"
 dependencies = [
  "clipboard",
  "midir",
+ "strum",
+ "strum_macros",
 ]
 
 [[package]]

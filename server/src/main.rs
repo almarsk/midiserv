@@ -9,17 +9,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_http::services::ServeDir;
-use util::UIType;
-
-struct ExposedDevice {
-    cc: u8,
-    ui_type: UIType,
-    desc: String,
-}
+use util::Device;
 
 struct AppState {
     socket: Mutex<Option<WebSocket>>,
-    exposed_devices: Mutex<Vec<ExposedDevice>>,
+    exposed_devices: Mutex<Vec<Device>>,
 }
 
 #[tokio::main]

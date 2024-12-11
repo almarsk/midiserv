@@ -20,6 +20,7 @@ use tokio_tungstenite::connect_async;
 use util::Device;
 use util::DeviceCommand;
 use util::MidiCommand;
+use util::UIType;
 
 slint::include_modules!();
 
@@ -41,7 +42,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         .set_midi_ports(ModelRc::from(Rc::clone(&p)));
 
     let exp_dev = Rc::new(VecModel::from(vec![]));
+    let ui_types = Rc::new(VecModel::from(
+        UIType::to_vec()
+            .iter()
+            .map(|s| SharedString::from(s))
+            .collect::<Vec<SharedString>>(),
+    ));
     app.set_exposed_devices(ModelRc::from(Rc::clone(&exp_dev)));
+    app.set_ui_types(ModelRc::from(Rc::clone(&ui_types)));
 
     let (midi_tx, midi_rx): (Sender<MidiCommand>, Receiver<MidiCommand>) = bounded(10);
 

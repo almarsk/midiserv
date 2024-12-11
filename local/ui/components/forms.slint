@@ -46,6 +46,7 @@ export component SingleForm inherits HorizontalLayout {
 }
 
 export component ExposeForm inherits HorizontalLayout {
+    in property <[string]> ui_types;
     in property <[string]> placeholders;
     callback clicked(string, string, string);
 
@@ -53,7 +54,7 @@ export component ExposeForm inherits HorizontalLayout {
     cc := TInput{placeholder: placeholders[0];}
     type := ComboBox {
                 width: 90px;
-                model: ["empty"];
+                model: ui_types;
                 current-value: "empty";
     }
     desc := TInput{placeholder: placeholders[2];}

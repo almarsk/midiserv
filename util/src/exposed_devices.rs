@@ -1,5 +1,6 @@
 use clipboard::{ClipboardContext, ClipboardProvider};
 use std::{fmt, str::FromStr};
+use strum::{EnumIter, IntoEnumIterator};
 
 pub enum DeviceCommand {
     Push(Device),
@@ -9,15 +10,17 @@ pub enum DeviceCommand {
     GetJoined,
 }
 
-#[derive(Clone)]
+#[derive(EnumIter, Clone)]
 pub enum UIType {
     Empty,
+    Check,
 }
 
 impl fmt::Display for UIType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             UIType::Empty => write!(f, "{}", "empty"),
+            UIType::Check => write!(f, "{}", "check"),
         }
     }
 }
@@ -30,6 +33,15 @@ impl FromStr for UIType {
             "empty" => Ok(UIType::Empty),
             _ => Err(format!("'{}' is not a valid value for MyEnum", s)),
         }
+    }
+}
+
+impl UIType {
+    pub fn to_vec() -> Vec<String> {
+        UIType::iter().fold(Vec::new(), |mut acc, variant| {
+            acc.push(variant.to_string());
+            acc
+        })
     }
 }
 

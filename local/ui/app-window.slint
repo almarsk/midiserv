@@ -22,6 +22,7 @@ export global AppState {
 
 export component AppWindow inherits Window {
     property <int> menu_buttons: 4;
+    in property <[string]> ui_types;
     in property <[string]> exposed_devices;
     property <int> default-padding: 10;
 
@@ -70,6 +71,7 @@ export component AppWindow inherits Window {
                 MenuItem{
                     text: "expose device";
                     ExposeForm{
+                        ui_types: ui_types;
                         placeholders: ["cc#","type","desc"];
                         clicked(t1,t2,t3) =>
                             {AppState.expose_device(t1, t2, t3)}

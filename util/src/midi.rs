@@ -45,7 +45,7 @@ impl Midi {
                     })
                     .collect(),
             })
-            .unwrap_or_else(|| panic!())
+            .unwrap()
     }
 
     pub fn get_ports(&mut self) -> Vec<String> {
