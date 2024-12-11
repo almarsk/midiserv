@@ -1,0 +1,21 @@
+refactor ports in local so that they get renewed when dropdown menu is opened
+
+password from local
+
+general security
+
+refactor ui backend
+
+connection status
+
+passthrough allowed
+
+exposed device communication
+
+server exposed device pool logic
+
+dynamic user frontend
+
+ui types scafolding
+
+reset button

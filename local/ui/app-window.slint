@@ -111,10 +111,27 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     padding-top: 20px;
                     spacing: default-padding / 2 * 1px;
-                    Submit{text: "paste"; clicked => {AppState.paste();}}
-                    Submit{text: "copy "; clicked => {AppState.copy_to_clipboard()} }
-                    Submit{text: "clear"; background: rgb(248,168,168); clicked => {AppState.clear_all()} }
-                    Submit{text: "stop "; background: rgb(248,168,168); clicked => {AppState.disconnect()} }
+                    Submit{
+                        text: "paste";
+                        clicked => {AppState.paste();}
+                        width: (parent.width - ((default-padding / 2 * 1px) * (menu-buttons - 1))) / menu-buttons;
+                    }
+                    Submit{
+                        text: "clipobard ";
+                        clicked => {AppState.copy_to_clipboard()}
+                        width: (parent.width - ((default-padding / 2 * 1px) * (menu-buttons - 1))) / menu-buttons;
+                    }
+                    Submit{
+                        text: "clear all";
+                        background: rgb(248,168,168);
+                        clicked => {AppState.clear_all()} width: (parent.width - ((default-padding / 2 * 1px) * (menu-buttons - 1))) / menu-buttons;
+                    }
+                    Submit{
+                        text: "disconnect ";
+                        background: rgb(248,168,168);
+                        clicked => {AppState.disconnect()}
+                        width: (parent.width - ((default-padding / 2 * 1px) * (menu-buttons - 1))) / menu-buttons;
+                    }
                 }
             }
         }
