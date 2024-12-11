@@ -1,18 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod exposed_devices;
-mod midi;
-
 use anyhow::Result;
 use clipboard::ClipboardContext;
 use clipboard::ClipboardProvider;
-use exposed_devices::Device;
-use exposed_devices::DeviceCommand;
 use flume::bounded;
 use flume::Receiver;
 use flume::Sender;
 use futures_util::stream::StreamExt;
-use midi::MidiCommand;
 use reqwest::Client;
 use serde_json::Value;
 use slint::CloseRequestResponse;
@@ -23,6 +17,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_tungstenite::connect_async;
+use util::Device;
+use util::DeviceCommand;
+use util::MidiCommand;
 
 slint::include_modules!();
 
@@ -32,7 +29,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let (shutdown_tx, shutdown_rx): (Sender<bool>, Receiver<bool>) = bounded(10);
 
-    let mut midi = midi::Midi::new();
+    let mut midi = util::Midi::new();
 
     let p = Rc::new(
         midi.get_ports()
@@ -84,8 +81,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                                             match midi_tx_clone
                                                 .send(MidiCommand::Signal(*cc, *value))
                                             {
-                                                Ok(o) => println!("yo"),
-                                                Err(e) => println!("nah"),
+                                                Ok(_) => println!("yo"),
+                                                Err(_) => println!("nah"),
                                             };
                                         } else {
                                             println!("nuh-uh")
@@ -115,7 +112,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let shutdown_rx_clone = shutdown_rx.clone();
     rt.spawn(async move {
-        let exposed_devices = exposed_devices::ExposedDevices::new();
+        let exposed_devices = util::ExposedDevices::new();
         let exposed = Arc::new(Mutex::new(exposed_devices));
         let exposed = Arc::clone(&exposed);
         loop {

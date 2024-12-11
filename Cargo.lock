@@ -2807,7 +2807,6 @@ dependencies = [
  "flume",
  "futures",
  "futures-util",
- "midir",
  "reqwest",
  "serde",
  "serde_json",
@@ -2816,6 +2815,7 @@ dependencies = [
  "thiserror 2.0.5",
  "tokio",
  "tokio-tungstenite",
+ "util",
 ]
 
 [[package]]
@@ -4139,6 +4139,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "tower-http",
+ "util",
 ]
 
 [[package]]
@@ -5056,6 +5057,14 @@ name = "utf8_iter"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
+
+[[package]]
+name = "util"
+version = "0.1.0"
+dependencies = [
+ "clipboard",
+ "midir",
+]
 
 [[package]]
 name = "vcpkg"

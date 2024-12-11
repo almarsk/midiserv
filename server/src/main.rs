@@ -9,22 +9,31 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_http::services::ServeDir;
+use util::UIType;
+
+struct ExposedDevice {
+    cc: u8,
+    ui_type: UIType,
+    desc: String,
+}
 
 struct AppState {
     socket: Mutex<Option<WebSocket>>,
+    exposed_devices: Mutex<Vec<ExposedDevice>>,
 }
 
 #[tokio::main]
 async fn main() {
     let shared_state = Arc::new(AppState {
         socket: Mutex::new(None),
+        exposed_devices: Mutex::new(Vec::new()),
     });
 
     let app = Router::new()
         .fallback(fallback)
         .nest_service("/", serve_dir("build".to_string()))
-        .nest_service("/assets", serve_dir("build/assets/".to_string()))
         .route("/ws", get(user_ws_handler))
+        .nest_service("/assets", serve_dir("build/assets/".to_string()))
         .route("/login", get(login))
         .route("/ws_loc", get(local_ws_handler))
         .with_state(shared_state);
