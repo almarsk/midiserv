@@ -9,7 +9,7 @@ pub struct Midi {
     ports: Vec<Port>,
 }
 
-pub enum MidiCommand {
+pub enum MidiCmd {
     Dummy(u8),
     Signal(u8, u8),
     Port(usize),

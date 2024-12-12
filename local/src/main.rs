@@ -1,122 +1,93 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod setters;
+mod tasks;
+mod ui_handlers;
+
 use anyhow::Result;
 use clipboard::ClipboardContext;
 use clipboard::ClipboardProvider;
 use flume::bounded;
 use flume::Receiver;
 use flume::Sender;
-use futures_util::stream::StreamExt;
 use reqwest::Client;
-use serde_json::Value;
+use setters::init_exposed_devices;
+use setters::init_ui_types;
+use setters::set_ports;
 use slint::CloseRequestResponse;
 use slint::ComponentHandle;
-use slint::{ModelRc, SharedString, VecModel};
+use slint::{SharedString, VecModel};
 use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
+use tasks::login_task;
 use tokio::sync::Mutex;
-use tokio_tungstenite::connect_async;
 use util::Device;
-use util::DeviceCommand;
-use util::MidiCommand;
-use util::UIType;
+use util::DeviceCmd;
+use util::MidiCmd;
 
 slint::include_modules!();
 
 fn main() -> Result<(), Box<dyn Error>> {
+    // init
     let app = AppWindow::new()?;
-
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let (shutdown_tx, shutdown_rx): (Sender<bool>, Receiver<bool>) = bounded(10);
-
     let mut midi = util::Midi::new();
 
-    let p = Rc::new(
-        midi.get_ports()
-            .iter()
-            .map(|s| SharedString::from(s))
-            .collect::<VecModel<_>>(),
-    );
-    app.global::<AppState>()
-        .set_midi_ports(ModelRc::from(Rc::clone(&p)));
+    set_ports(&mut midi, app.clone_strong());
+    let exp_dev = init_exposed_devices(app.clone_strong());
+    init_ui_types(app.clone_strong());
 
-    let exp_dev = Rc::new(VecModel::from(vec![]));
-    let ui_types = Rc::new(VecModel::from(
-        UIType::to_vec()
-            .iter()
-            .map(|s| SharedString::from(s))
-            .collect::<Vec<SharedString>>(),
-    ));
-    app.set_exposed_devices(ModelRc::from(Rc::clone(&exp_dev)));
-    app.set_ui_types(ModelRc::from(Rc::clone(&ui_types)));
+    let login: Arc<Mutex<Option<Login>>> = Arc::new(Mutex::new(None));
+    let rt = tokio::runtime::Runtime::new().unwrap();
 
-    let (midi_tx, midi_rx): (Sender<MidiCommand>, Receiver<MidiCommand>) = bounded(10);
-
-    let (device_command_tx, device_command_rx): (Sender<DeviceCommand>, Receiver<DeviceCommand>) =
-        bounded(10);
-
-    let (device_response_tx, device_response_rx): (Sender<Vec<String>>, Receiver<Vec<String>>) =
-        bounded(10);
-
+    // channels
+    let (shutdown_tx, shutdown_rx): (Sender<bool>, Receiver<bool>) = bounded(10);
+    let (midi_tx, midi_rx): (Sender<MidiCmd>, Receiver<MidiCmd>) = bounded(10);
+    let (dvc_tx, dvc_rx): (Sender<DeviceCmd>, Receiver<DeviceCmd>) = bounded(10);
+    let (dvc_rpns_tx, dvc_rpns_rx): (Sender<Vec<String>>, Receiver<Vec<String>>) = bounded(10);
     let (login_tx, login_rx): (Sender<Login>, Receiver<Login>) = bounded(10);
+    let (logout_tx, logout_rx): (Sender<()>, Receiver<()>) = bounded(10);
     let (login_response_tx, login_response_rx): (Sender<bool>, Receiver<bool>) = bounded(10);
 
-    // todo let shutdown_rx_clone = shutdown_rx.clone();
-    let midi_tx_clone = midi_tx.clone();
+    // exposed devices state
+    let state = Rc::new(ExposedState {
+        tx: dvc_tx.clone(),
+        rx: dvc_rpns_rx.clone(),
+        exp_dev,
+    });
+
+    let shutdown_rx_clone = shutdown_rx.clone();
+    let logout_rx_clone = logout_rx.clone();
+    let login_clone = login.clone();
     rt.spawn(async move {
-        while let Ok(login) = login_rx.recv_async().await {
-            let url = format!("http://{}/login", &login.url);
-            println!("{}", url);
-
-            if let Ok(response) = Client::new().get(&url).send().await {
-                if let Ok(body) = response.text().await {
-                    if let Ok(json) = serde_json::from_str::<Value>(&body) {
-                        if let Some(success) = json.get("success").and_then(Value::as_bool) {
-                            println!("http done");
-                            let url = format!("ws://{}/ws_loc", login.url);
-
-                            match connect_async(url).await {
-                                Ok((mut ws_stream, _)) => {
-                                    let _ = login_response_tx.send(success);
-                                    println!("lesgo");
-                                    while let Some(Ok(message)) = ws_stream.next().await {
-                                        let message = message.into_data();
-                                        let cc = message.get(0);
-                                        let value = message.get(1);
-
-                                        if let (Some(cc), Some(value)) = (cc, value) {
-                                            match midi_tx_clone
-                                                .send(MidiCommand::Signal(*cc, *value))
-                                            {
-                                                Ok(_) => println!("yo"),
-                                                Err(_) => println!("nah"),
-                                            };
-                                        } else {
-                                            println!("nuh-uh")
-                                        };
-                                        println!("Received message: {:?}", message)
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("{e}");
-                                    let _ = login_response_tx.send(false);
-                                }
-                            }
-                        } else {
-                            let _ = login_response_tx.send(false);
+        loop {
+            tokio::select! {
+                shutdown_option = shutdown_rx_clone.recv_async() => {
+                    if let Ok(shutdown) = shutdown_option {
+                        if shutdown {
+                            break;
                         }
-                    } else {
-                        let _ = login_response_tx.send(false);
                     }
-                } else {
-                    let _ = login_response_tx.send(false);
                 }
-            } else {
-                let _ = login_response_tx.send(false);
+                _ = logout_rx_clone.recv_async() => {
+                    if let Some(ref login) = *login_clone.lock().await {
+                    let url = format!("http://{}/logout", &login.url);
+                    let r = Client::new().get(url).send().await;
+                    println!("disconnect sent {:?}", r);
+                    }
+                }
             }
         }
     });
+
+    login_task(
+        &rt,
+        shutdown_rx.clone(),
+        login_rx,
+        midi_tx.clone(),
+        login_response_tx.clone(),
+        login.clone(),
+    );
 
     let shutdown_rx_clone = shutdown_rx.clone();
     rt.spawn(async move {
@@ -125,15 +96,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         let exposed = Arc::clone(&exposed);
         loop {
             tokio::select! {
-                exposed_device_command = device_command_rx.recv_async() => {
+                exposed_device_command = dvc_rx.recv_async() => {
                     if let Ok(e) = exposed_device_command {
                         match e {
-                            DeviceCommand::Push(d) => exposed.lock().await.push(d),
-                            DeviceCommand::Remove(index) => exposed.lock().await.remove(index),
-                            DeviceCommand::Clear => exposed.lock().await.clear(),
-                            DeviceCommand::CopyToClipBoard => exposed.lock().await.copy_to_clipboard(),
-                            DeviceCommand::GetJoined => {
-                                let _ = device_response_tx
+                            DeviceCmd::Push(d) => exposed.lock().await.push(d),
+                            DeviceCmd::Remove(index) => exposed.lock().await.remove(index),
+                            DeviceCmd::Clear => exposed.lock().await.clear(),
+                            DeviceCmd::CopyToClipBoard => exposed.lock().await.copy_to_clipboard(),
+                            DeviceCmd::GetJoined => {
+                                let _ = dvc_rpns_tx
                                     .send_async(exposed.lock().await.get_joined())
                                     .await;
                                 }
@@ -161,9 +132,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                  if let Ok(command) = command_option {
                      let mut midi = midi.lock().await;
                      match command {
-                         MidiCommand::Dummy(cc) => midi.send_cc(cc, 0),
-                         MidiCommand::Signal(cc, value) => midi.send_cc(cc, value),
-                         MidiCommand::Port(port) => midi.update_port(port),
+                         MidiCmd::Dummy(cc) => midi.send_cc(cc, 0),
+                         MidiCmd::Signal(cc, value) => midi.send_cc(cc, value),
+                         MidiCmd::Port(port) => midi.update_port(port),
                      }
                     }
                 }
@@ -180,7 +151,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let tx_clone = midi_tx.clone();
     app.global::<AppState>().on_choose_midi_port(move |port| {
-        let _ = tx_clone.send(MidiCommand::Port(port as usize));
+        let _ = tx_clone.send(MidiCmd::Port(port as usize));
     });
 
     let tx_clone = midi_tx.clone();
@@ -190,14 +161,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .clone()
                 .parse::<u8>()
                 .ok()
-                .and_then(|cc| tx_clone.send(MidiCommand::Dummy(cc)).ok());
+                .and_then(|cc| tx_clone.send(MidiCmd::Dummy(cc)).ok());
         });
-
-    let state = Rc::new(ExposedState {
-        tx: device_command_tx.clone(),
-        rx: device_response_rx.clone(),
-        exp_dev,
-    });
 
     let state_clone = state.clone();
     app.global::<AppState>()
@@ -209,7 +174,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             ) {
                 let state_clone = state_clone.clone();
                 let _ = slint::spawn_local(async move {
-                    let _ = state_clone.tx.send(DeviceCommand::Push(new_device));
+                    let _ = state_clone.tx.send(DeviceCmd::Push(new_device));
 
                     update_exp_dev(state_clone.to_owned());
                 });
@@ -219,14 +184,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let state_clone = state.clone();
     app.global::<AppState>().on_hide_device(move |i| {
         if let Ok(index) = i.parse::<usize>() {
-            let _ = state_clone.tx.send(DeviceCommand::Remove(index));
+            let _ = state_clone.tx.send(DeviceCmd::Remove(index));
             update_exp_dev(state_clone.to_owned());
         }
     });
 
     let state_clone = state.clone();
     app.global::<AppState>().on_copy_to_clipboard(move || {
-        let _ = state_clone.tx.send(DeviceCommand::CopyToClipBoard);
+        let _ = state_clone.tx.send(DeviceCmd::CopyToClipBoard);
     });
 
     let state_clone = state.clone();
@@ -248,7 +213,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 ui_type.to_string(),
                                 desc.to_string(),
                             ) {
-                                let _ = state_clone.tx.send(DeviceCommand::Push(new_device));
+                                let _ = state_clone.tx.send(DeviceCmd::Push(new_device));
                             }
                         }
                     }
@@ -260,7 +225,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let state_clone = state.clone();
     app.global::<AppState>().on_clear_all(move || {
-        let _ = state_clone.tx.send(DeviceCommand::Clear);
+        let _ = state_clone.tx.send(DeviceCmd::Clear);
         update_exp_dev(state_clone.to_owned());
     });
 
@@ -268,7 +233,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     app.global::<AppState>().on_login(move |url, pass| {
         let _ = login_tx.send(Login {
             url: url.to_string(),
-            _pass: pass.to_string(),
+            pass: pass.to_string(),
         });
 
         app_clone
@@ -277,7 +242,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     });
 
     let app_clone = app.clone_strong();
+    let logout_tx_clone = logout_tx.clone();
     app.global::<AppState>().on_disconnect(move || {
+        let r = logout_tx_clone.send(());
+        println!("ds {:?}", r);
         app_clone
             .global::<AppState>()
             .set_connected_to_server(false);
@@ -295,20 +263,21 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[derive(Clone)]
 struct Login {
     pub url: String,
-    pub _pass: String,
+    pub pass: String,
 }
 
 struct ExposedState {
-    tx: Sender<DeviceCommand>,
+    tx: Sender<DeviceCmd>,
     rx: Receiver<Vec<String>>,
     exp_dev: Rc<VecModel<SharedString>>,
 }
 
 fn update_exp_dev(state: Rc<ExposedState>) {
     let _ = slint::spawn_local(async move {
-        let _ = state.tx.send(DeviceCommand::GetJoined);
+        let _ = state.tx.send(DeviceCmd::GetJoined);
         state.exp_dev.set_vec(
             state
                 .rx

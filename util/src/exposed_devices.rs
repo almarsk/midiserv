@@ -2,7 +2,7 @@ use clipboard::{ClipboardContext, ClipboardProvider};
 use std::{fmt, str::FromStr};
 use strum::{EnumIter, IntoEnumIterator};
 
-pub enum DeviceCommand {
+pub enum DeviceCmd {
     Push(Device),
     Remove(usize),
     Clear,
