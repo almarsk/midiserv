@@ -3,6 +3,7 @@ MAINTENANCE:
     logout with password
 
 FEATURES:
+
     exposed device communication
     connection status
     passthrough allowed
