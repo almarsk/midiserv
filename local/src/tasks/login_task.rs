@@ -10,7 +10,7 @@ use crate::Login;
 
 pub fn login_task(
     rt: &Runtime,
-    shut_rx: Receiver<bool>,
+    shutdown_rx: Receiver<bool>,
     login_rx: Receiver<Login>,
     midi_tx: Sender<MidiCmd>,
     login_tx: Sender<bool>,
@@ -19,7 +19,7 @@ pub fn login_task(
     rt.spawn(async move {
         loop {
             tokio::select! {
-                shutdown_option = shut_rx.recv_async() => {
+                shutdown_option = shutdown_rx.recv_async() => {
                     if let Ok(shutdown) = shutdown_option {
                         if shutdown {
                             break;
@@ -32,7 +32,7 @@ pub fn login_task(
                             let mut guard = login_data.lock().await;
                             *guard = Some(login.clone());
                         };
-                        if let Err(_) = process_response(
+                        if let Err(_) = setup_connection(
                             login,
                             login_tx.clone(),
                             midi_tx.clone(),
@@ -46,7 +46,7 @@ pub fn login_task(
     });
 }
 
-async fn process_response(
+async fn setup_connection(
     login: Login,
     login_tx: Sender<bool>,
     midi_tx: Sender<MidiCmd>,

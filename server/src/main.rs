@@ -4,7 +4,6 @@ use axum::http::{StatusCode, Uri};
 use axum::routing::{any_service, MethodRouter};
 use axum::Json;
 use axum::{extract::WebSocketUpgrade, response::IntoResponse, routing::get, Router};
-use axum_server::tls_rustls::RustlsConfig;
 use dotenv::dotenv;
 use serde::Deserialize;
 use serde_json::json;
@@ -32,12 +31,6 @@ async fn main() {
         _exposed_devices: Mutex::new(Vec::new()),
         password: env::var("WS_PASSWORD").expect("WS_PASSWORD must be set"),
     });
-
-    /*
-    let tls_config = RustlsConfig::from_pem_file("cert.pem", "key.pem")
-        .await
-        .expect("failed to load TLS keys");
-    */
 
     let app = Router::new()
         .fallback(fallback)
@@ -74,7 +67,6 @@ struct ConnectQuery {
 }
 
 async fn local_ws_handler(
-    //_: LimitPerSecond<5, Method>,
     ws: WebSocketUpgrade,
     Query(query): Query<ConnectQuery>,
     State(state): State<Arc<AppState>>,

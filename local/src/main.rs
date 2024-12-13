@@ -10,7 +10,6 @@ use clipboard::ClipboardProvider;
 use flume::bounded;
 use flume::Receiver;
 use flume::Sender;
-use reqwest::Client;
 use setters::init_exposed_devices;
 use setters::init_ui_types;
 use setters::set_ports;
@@ -20,7 +19,10 @@ use slint::{SharedString, VecModel};
 use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
+use tasks::device_task;
 use tasks::login_task;
+use tasks::logout_task;
+use tasks::midi_task;
 use tokio::sync::Mutex;
 use util::Device;
 use util::DeviceCmd;
@@ -29,7 +31,7 @@ use util::MidiCmd;
 slint::include_modules!();
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // init
+    // INIT
     let app = AppWindow::new()?;
     let mut midi = util::Midi::new();
 
@@ -40,7 +42,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let login: Arc<Mutex<Option<Login>>> = Arc::new(Mutex::new(None));
     let rt = tokio::runtime::Runtime::new().unwrap();
 
-    // channels
+    // CHANNELS
     let (shutdown_tx, shutdown_rx): (Sender<bool>, Receiver<bool>) = bounded(10);
     let (midi_tx, midi_rx): (Sender<MidiCmd>, Receiver<MidiCmd>) = bounded(10);
     let (dvc_tx, dvc_rx): (Sender<DeviceCmd>, Receiver<DeviceCmd>) = bounded(10);
@@ -49,37 +51,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (logout_tx, logout_rx): (Sender<()>, Receiver<()>) = bounded(10);
     let (login_response_tx, login_response_rx): (Sender<bool>, Receiver<bool>) = bounded(10);
 
-    // exposed devices state
+    // EXPOSED DEVICES
     let state = Rc::new(ExposedState {
         tx: dvc_tx.clone(),
         rx: dvc_rpns_rx.clone(),
         exp_dev,
     });
 
-    let shutdown_rx_clone = shutdown_rx.clone();
-    let logout_rx_clone = logout_rx.clone();
-    let login_clone = login.clone();
-    rt.spawn(async move {
-        loop {
-            tokio::select! {
-                shutdown_option = shutdown_rx_clone.recv_async() => {
-                    if let Ok(shutdown) = shutdown_option {
-                        if shutdown {
-                            break;
-                        }
-                    }
-                }
-                _ = logout_rx_clone.recv_async() => {
-                    if let Some(ref login) = *login_clone.lock().await {
-                    let url = format!("http://{}/logout", &login.url);
-                    let r = Client::new().get(url).send().await;
-                    println!("disconnect sent {:?}", r);
-                    }
-                }
-            }
-        }
-    });
-
+    // TASKS
+    logout_task(&rt, shutdown_rx.clone(), logout_rx.clone(), login.clone());
     login_task(
         &rt,
         shutdown_rx.clone(),
@@ -88,72 +68,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         login_response_tx.clone(),
         login.clone(),
     );
+    device_task(&rt, shutdown_rx.clone(), dvc_rx, dvc_rpns_tx);
+    midi_task(&rt, shutdown_rx.clone(), midi, midi_rx);
 
-    let shutdown_rx_clone = shutdown_rx.clone();
-    rt.spawn(async move {
-        let exposed_devices = util::ExposedDevices::new();
-        let exposed = Arc::new(Mutex::new(exposed_devices));
-        let exposed = Arc::clone(&exposed);
-        loop {
-            tokio::select! {
-                exposed_device_command = dvc_rx.recv_async() => {
-                    if let Ok(e) = exposed_device_command {
-                        match e {
-                            DeviceCmd::Push(d) => exposed.lock().await.push(d),
-                            DeviceCmd::Remove(index) => exposed.lock().await.remove(index),
-                            DeviceCmd::Clear => exposed.lock().await.clear(),
-                            DeviceCmd::CopyToClipBoard => exposed.lock().await.copy_to_clipboard(),
-                            DeviceCmd::GetJoined => {
-                                let _ = dvc_rpns_tx
-                                    .send_async(exposed.lock().await.get_joined())
-                                    .await;
-                                }
-                        }
-                    }
-                }
-                shutdown_option = shutdown_rx_clone.recv_async() => {
-                    if let Ok(shutdown) = shutdown_option {
-                        if shutdown {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    let shutdown_rx_clone = shutdown_rx.clone();
-    rt.spawn(async move {
-        let midi = Arc::new(Mutex::new(midi));
-        let midi = Arc::clone(&midi);
-        loop {
-            tokio::select! {
-                command_option = midi_rx.recv_async() => {
-                 if let Ok(command) = command_option {
-                     let mut midi = midi.lock().await;
-                     match command {
-                         MidiCmd::Dummy(cc) => midi.send_cc(cc, 0),
-                         MidiCmd::Signal(cc, value) => midi.send_cc(cc, value),
-                         MidiCmd::Port(port) => midi.update_port(port),
-                     }
-                    }
-                }
-                shutdown_option = shutdown_rx_clone.recv_async() => {
-                    if let Ok(shutdown) = shutdown_option {
-                        if shutdown {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    });
-
+    // UI
     let tx_clone = midi_tx.clone();
     app.global::<AppState>().on_choose_midi_port(move |port| {
         let _ = tx_clone.send(MidiCmd::Port(port as usize));
     });
-
     let tx_clone = midi_tx.clone();
     app.global::<AppState>()
         .on_send_dummy_cc(move |controller| {
@@ -163,7 +85,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .ok()
                 .and_then(|cc| tx_clone.send(MidiCmd::Dummy(cc)).ok());
         });
-
     let state_clone = state.clone();
     app.global::<AppState>()
         .on_expose_device(move |cc, ui_type, description| {
@@ -180,7 +101,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                 });
             }
         });
-
     let state_clone = state.clone();
     app.global::<AppState>().on_hide_device(move |i| {
         if let Ok(index) = i.parse::<usize>() {
@@ -188,12 +108,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             update_exp_dev(state_clone.to_owned());
         }
     });
-
     let state_clone = state.clone();
     app.global::<AppState>().on_copy_to_clipboard(move || {
         let _ = state_clone.tx.send(DeviceCmd::CopyToClipBoard);
     });
-
     let state_clone = state.clone();
     app.global::<AppState>().on_paste(move || {
         if let Ok(ctx) = ClipboardProvider::new() {
@@ -222,13 +140,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     });
-
     let state_clone = state.clone();
     app.global::<AppState>().on_clear_all(move || {
         let _ = state_clone.tx.send(DeviceCmd::Clear);
         update_exp_dev(state_clone.to_owned());
     });
-
     let app_clone = app.clone_strong();
     app.global::<AppState>().on_login(move |url, pass| {
         let _ = login_tx.send(Login {
@@ -240,26 +156,33 @@ fn main() -> Result<(), Box<dyn Error>> {
             .global::<AppState>()
             .set_connected_to_server(login_response_rx.recv().unwrap_or(false));
     });
-
     let app_clone = app.clone_strong();
     let logout_tx_clone = logout_tx.clone();
     app.global::<AppState>().on_disconnect(move || {
-        let r = logout_tx_clone.send(());
-        println!("ds {:?}", r);
+        let _ = logout_tx_clone.send(());
         app_clone
             .global::<AppState>()
             .set_connected_to_server(false);
     });
 
+    // STOP
+    let logout_tx_clone = logout_tx.clone();
     app.window().on_close_requested(move || {
+        let _ = logout_tx_clone.send(());
         let _ = shutdown_tx.send(true);
         CloseRequestResponse::HideWindow
     });
+
+    run_app(app, rt)
+}
+
+fn run_app(app: AppWindow, rt: tokio::runtime::Runtime) -> Result<(), Box<dyn std::error::Error>> {
     let _ = app.run();
 
     rt.block_on(async {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     });
+
     Ok(())
 }
 
