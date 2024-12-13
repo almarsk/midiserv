@@ -1,7 +1,5 @@
 MAINTENANCE:
     general security https, wss
-    refactor ports in local so that they get renewed when dropdown menu upon refresh button click
-    send dummy cc even when offline
     logout with password
 
 FEATURES:

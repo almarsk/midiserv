@@ -5,9 +5,10 @@ use std::rc::Rc;
 use slint::{ModelRc, SharedString, VecModel};
 use util::{Midi, UIType};
 
-pub fn set_ports(midi: &mut Midi, app: AppWindow) {
+pub fn set_ports(app: AppWindow) {
     let ports = Rc::new(
-        midi.get_ports()
+        Midi::new()
+            .get_ports()
             .iter()
             .map(|s| SharedString::from(s))
             .collect::<VecModel<_>>(),

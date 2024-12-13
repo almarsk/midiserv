@@ -26,6 +26,7 @@ use tasks::midi_task;
 use tokio::sync::Mutex;
 use util::Device;
 use util::DeviceCmd;
+use util::Midi;
 use util::MidiCmd;
 
 slint::include_modules!();
@@ -33,9 +34,7 @@ slint::include_modules!();
 fn main() -> Result<(), Box<dyn Error>> {
     // INIT
     let app = AppWindow::new()?;
-    let mut midi = util::Midi::new();
-
-    set_ports(&mut midi, app.clone_strong());
+    set_ports(app.clone_strong());
     let exp_dev = init_exposed_devices(app.clone_strong());
     init_ui_types(app.clone_strong());
 
@@ -69,7 +68,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         login.clone(),
     );
     device_task(&rt, shutdown_rx.clone(), dvc_rx, dvc_rpns_tx);
-    midi_task(&rt, shutdown_rx.clone(), midi, midi_rx);
+    midi_task(&rt, shutdown_rx.clone(), Midi::new(), midi_rx);
 
     // UI
     let tx_clone = midi_tx.clone();
@@ -112,6 +111,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     app.global::<AppState>().on_copy_to_clipboard(move || {
         let _ = state_clone.tx.send(DeviceCmd::CopyToClipBoard);
     });
+    let app_clone = app.clone_strong();
+    app.global::<AppState>().on_refresh_ports(move || {
+        set_ports(app_clone.clone_strong());
+    });
     let state_clone = state.clone();
     app.global::<AppState>().on_paste(move || {
         if let Ok(ctx) = ClipboardProvider::new() {
@@ -147,6 +150,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     });
     let app_clone = app.clone_strong();
     app.global::<AppState>().on_login(move |url, pass| {
+        set_ports(app_clone.clone_strong());
         let _ = login_tx.send(Login {
             url: url.to_string(),
             pass: pass.to_string(),

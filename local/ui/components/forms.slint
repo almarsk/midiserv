@@ -74,6 +74,10 @@ export component Login inherits VerticalLayout {
     spacing: 5px;
     callback connect-attempt(string, string);
 
+    Text{
+        text: "connect to server";
+    }
+
     url := LineEdit {
         placeholder-text: "url";
         font-size: 12px;

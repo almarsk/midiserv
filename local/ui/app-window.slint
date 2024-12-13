@@ -6,6 +6,35 @@ import { SingleForm, ExposeForm, Submit, Login } from "./components/forms.slint"
 
 struct Port { name: string, id: string }
 
+component LocalMidi inherits VerticalLayout {
+    spacing: 10px;
+
+    MenuItem{
+        text: "send dummy cc";
+        SingleForm {
+            clicked(cc) => {AppState.send_dummy_cc(cc)}
+        }
+    }
+    HorizontalLayout{
+        alignment: start;
+        MenuItem{
+            width: parent.width;
+            text: "select midi port";
+            port-selector := ComboBox {
+                width: parent.width - 260px;
+                model: AppState.midi-ports;
+                selected => {AppState.choose_midi_port(port-selector.current_index)}
+                current-value: "";
+            }
+            Submit {
+                text: "♺";
+                clicked => {AppState.refresh_ports();}
+                width: 40px;
+            }
+        }
+    }
+}
+
 export global AppState {
     callback hide_device(string);
     callback expose_device(string, string, string);
@@ -16,6 +45,7 @@ export global AppState {
     callback disconnect();
     callback paste();
     callback login(string, string);
+    callback refresh_ports();
     in property <[string]> midi-ports;
     in property <bool> connected_to_server: false;
 }
@@ -28,8 +58,8 @@ export component AppWindow inherits Window {
 
     title: "midiserv";
     background: rgb(200,200,200);
-    min-height: (AppState.connected_to_server ? 500 : 180) * 1px;
-    max-height: (AppState.connected_to_server ? 10000 : 180) * 1px;
+    min-height: (AppState.connected_to_server ? 500 : 310) * 1px;
+    max-height: (AppState.connected_to_server ? 1000 : 310) * 1px;
     min-width: 500px;
     preferred-width: 500px;
     default-font-family: "Chivo Mono";
@@ -38,36 +68,29 @@ export component AppWindow inherits Window {
     VerticalLayout {
         alignment: start;
         padding: default-padding * 1px;
+
         Text {
             text: "midiserv";
             font-size: 30px;
             color:black;
         }
-    if !AppState.connected_to_server : Login{connect-attempt(url, pass) => {AppState.login(url, pass)}}
+
+    Rectangle {
+        height: 30px;
+    }
+    if !AppState.connected_to_server : VerticalLayout{
+        spacing: 10px;
+        LocalMidi{}
+        Login{connect-attempt(url, pass) => {AppState.login(url, pass)}}
+        }
 
     if AppState.connected_to_server : VerticalLayout {
             VerticalLayout {
-                padding-top: 30px;
                 spacing: 10px;
 
                 MenuItem{text: "connection status"; Status{}}
                 MenuItem{text: "passthrough allowed"; Switch{}}
-                MenuItem{
-                    text: "send dummy cc";
-                    SingleForm {
-                        clicked(cc) => {AppState.send_dummy_cc(cc)}
-                    }
-                }
-                MenuItem{
-                    width: parent.width;
-                    text: "select midi port";
-                    port-selector := ComboBox {
-                        min-width: parent.width - 210px;
-                        model: AppState.midi-ports;
-                        selected => {AppState.choose_midi_port(port-selector.current_index)}
-                        current-value: "";
-                    }
-                }
+                LocalMidi{}
                 MenuItem{
                     text: "expose device";
                     ExposeForm{
