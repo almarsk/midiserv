@@ -48,6 +48,8 @@ export global AppState {
     callback refresh_ports();
     in property <[string]> midi-ports;
     in property <bool> connected_to_server: false;
+    in property <bool> logged_in: false;
+    in property <string> server_name;
 }
 
 export component AppWindow inherits Window {
@@ -58,8 +60,8 @@ export component AppWindow inherits Window {
 
     title: "midiserv";
     background: rgb(200,200,200);
-    min-height: (AppState.connected_to_server ? 500 : 310) * 1px;
-    max-height: (AppState.connected_to_server ? 1000 : 310) * 1px;
+    min-height: (AppState.logged_in ? 500 : 310) * 1px;
+    max-height: (AppState.logged_in ? 1000 : 310) * 1px;
     min-width: 500px;
     preferred-width: 500px;
     default-font-family: "Chivo Mono";
@@ -78,17 +80,23 @@ export component AppWindow inherits Window {
     Rectangle {
         height: 30px;
     }
-    if !AppState.connected_to_server : VerticalLayout{
+    if !AppState.logged_in : VerticalLayout{
         spacing: 10px;
         LocalMidi{}
         Login{connect-attempt(url, pass) => {AppState.login(url, pass)}}
         }
 
-    if AppState.connected_to_server : VerticalLayout {
+    if AppState.logged_in : VerticalLayout {
             VerticalLayout {
                 spacing: 10px;
 
-                MenuItem{text: "connection status"; Status{}}
+                MenuItem{
+                    text: "connection status";
+                    Status{
+                        status: AppState.connected_to_server;
+                        name: AppState.server_name;
+                    }
+                }
                 MenuItem{text: "passthrough allowed"; Switch{}}
                 LocalMidi{}
                 MenuItem{

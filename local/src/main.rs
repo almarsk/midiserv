@@ -49,6 +49,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (login_tx, login_rx): (Sender<Login>, Receiver<Login>) = bounded(10);
     let (logout_tx, logout_rx): (Sender<()>, Receiver<()>) = bounded(10);
     let (login_response_tx, login_response_rx): (Sender<bool>, Receiver<bool>) = bounded(10);
+    let (status_tx, status_rx): (Sender<Status>, Receiver<Status>) = bounded(10);
 
     // EXPOSED DEVICES
     let state = Rc::new(ExposedState {
@@ -59,6 +60,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // TASKS
     logout_task(&rt, shutdown_rx.clone(), logout_rx.clone(), login.clone());
+
+    let app_clone = app.clone_strong();
+    update_connection_status(app_clone, status_rx);
     login_task(
         &rt,
         shutdown_rx.clone(),
@@ -66,6 +70,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         midi_tx.clone(),
         login_response_tx.clone(),
         login.clone(),
+        status_tx,
     );
     device_task(&rt, shutdown_rx.clone(), dvc_rx, dvc_rpns_tx);
     midi_task(&rt, shutdown_rx.clone(), Midi::new(), midi_rx);
@@ -75,6 +80,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     app.global::<AppState>().on_choose_midi_port(move |port| {
         let _ = tx_clone.send(MidiCmd::Port(port as usize));
     });
+
     let tx_clone = midi_tx.clone();
     app.global::<AppState>()
         .on_send_dummy_cc(move |controller| {
@@ -84,6 +90,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .ok()
                 .and_then(|cc| tx_clone.send(MidiCmd::Dummy(cc)).ok());
         });
+
     let state_clone = state.clone();
     app.global::<AppState>()
         .on_expose_device(move |cc, ui_type, description| {
@@ -100,6 +107,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 });
             }
         });
+
     let state_clone = state.clone();
     app.global::<AppState>().on_hide_device(move |i| {
         if let Ok(index) = i.parse::<usize>() {
@@ -107,14 +115,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             update_exp_dev(state_clone.to_owned());
         }
     });
+
     let state_clone = state.clone();
     app.global::<AppState>().on_copy_to_clipboard(move || {
         let _ = state_clone.tx.send(DeviceCmd::CopyToClipBoard);
     });
+
     let app_clone = app.clone_strong();
     app.global::<AppState>().on_refresh_ports(move || {
         set_ports(app_clone.clone_strong());
     });
+
     let state_clone = state.clone();
     app.global::<AppState>().on_paste(move || {
         if let Ok(ctx) = ClipboardProvider::new() {
@@ -143,11 +154,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     });
+
     let state_clone = state.clone();
     app.global::<AppState>().on_clear_all(move || {
         let _ = state_clone.tx.send(DeviceCmd::Clear);
         update_exp_dev(state_clone.to_owned());
     });
+
     let app_clone = app.clone_strong();
     app.global::<AppState>().on_login(move |url, pass| {
         set_ports(app_clone.clone_strong());
@@ -158,15 +171,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         app_clone
             .global::<AppState>()
-            .set_connected_to_server(login_response_rx.recv().unwrap_or(false));
+            .set_logged_in(login_response_rx.recv().unwrap_or(false));
     });
+
     let app_clone = app.clone_strong();
     let logout_tx_clone = logout_tx.clone();
     app.global::<AppState>().on_disconnect(move || {
         let _ = logout_tx_clone.send(());
-        app_clone
-            .global::<AppState>()
-            .set_connected_to_server(false);
+        app_clone.global::<AppState>().set_logged_in(false);
     });
 
     // STOP
@@ -196,6 +208,11 @@ struct Login {
     pub pass: String,
 }
 
+enum Status {
+    Connection(bool),
+    Text(String),
+}
+
 struct ExposedState {
     tx: Sender<DeviceCmd>,
     rx: Receiver<Vec<String>>,
@@ -213,5 +230,19 @@ fn update_exp_dev(state: Rc<ExposedState>) {
                 .map(|v| v.iter().map(|s| SharedString::from(s)).collect())
                 .unwrap_or(vec![]),
         )
+    });
+}
+
+fn update_connection_status(app: AppWindow, status_rx: Receiver<Status>) {
+    let _ = slint::spawn_local(async move {
+        let app_state = app.global::<AppState>();
+        loop {
+            if let Ok(status) = status_rx.recv_async().await {
+                match status {
+                    Status::Connection(s) => app_state.set_connected_to_server(s),
+                    Status::Text(t) => app_state.set_server_name(SharedString::from(t)),
+                }
+            };
+        }
     });
 }

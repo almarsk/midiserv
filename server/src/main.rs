@@ -1,4 +1,4 @@
-use axum::extract::ws::WebSocket;
+use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Query, State};
 use axum::http::{StatusCode, Uri};
 use axum::routing::{any_service, MethodRouter};
@@ -19,6 +19,7 @@ struct AppState {
     socket: Mutex<Option<WebSocket>>,
     _exposed_devices: Mutex<Vec<Device>>,
     password: String,
+    server_name: String,
 }
 
 #[tokio::main]
@@ -30,6 +31,7 @@ async fn main() {
         socket: Mutex::new(None),
         _exposed_devices: Mutex::new(Vec::new()),
         password: env::var("WS_PASSWORD").expect("WS_PASSWORD must be set"),
+        server_name: env::var("SERVER_NAME").expect("SERVER_NAME must be set"),
     });
 
     let app = Router::new()
@@ -89,7 +91,9 @@ async fn local_ws_handler(
     }
 
     let state = Arc::clone(&state);
-    ws.on_upgrade(move |socket| async move {
+    ws.on_upgrade(move |mut socket| async move {
+        println!("{}", state.server_name);
+        let _ = socket.send(Message::Text(state.server_name.clone()));
         let mut guard = state.socket.lock().await;
         *guard = Some(socket);
         *state.connected.lock().await = true;

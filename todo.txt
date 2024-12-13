@@ -1,11 +1,13 @@
 MAINTENANCE:
-    general security https, wss
-    logout with password
+    general security https, wss, log in and out with password
+    just one midi struct - map out midi structs
+    connection status - show server name
 
 FEATURES:
-
+    sessions
+        login from local starts a separate session
+        view and stop session enpoints
     exposed device communication
-    connection status
     passthrough allowed
     dynamic user frontend
         simple server exposed device pool logic

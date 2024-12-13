@@ -43,7 +43,10 @@ export component Switch inherits Rectangle {
 }
 
 export component Status inherits Rectangle {
+    in property<bool> status: false;
+    in property<string> name;
     Indicator {
+        isOn: status;
         VerticalLayout{
             alignment: center;
 
@@ -51,7 +54,7 @@ export component Status inherits Rectangle {
                 alignment: center;
                 Text {
                     color: black;
-                    text: "bruh";
+                    text: name;
                 }
             }
         }
