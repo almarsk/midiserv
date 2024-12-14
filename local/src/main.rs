@@ -10,12 +10,12 @@ use clipboard::ClipboardProvider;
 use flume::bounded;
 use flume::Receiver;
 use flume::Sender;
-use setters::init_exposed_devices;
-use setters::init_ui_types;
-use setters::set_ports;
+use setters::{
+    init_exposed_devices, init_ui_types, set_ports, update_connection_status, update_exp_dev,
+    ExposedState, Status,
+};
 use slint::CloseRequestResponse;
 use slint::ComponentHandle;
-use slint::{SharedString, VecModel};
 use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -206,43 +206,4 @@ fn run_app(app: AppWindow, rt: tokio::runtime::Runtime) -> Result<(), Box<dyn st
 struct Login {
     pub url: String,
     pub pass: String,
-}
-
-enum Status {
-    Connection(bool),
-    Text(String),
-}
-
-struct ExposedState {
-    tx: Sender<DeviceCmd>,
-    rx: Receiver<Vec<String>>,
-    exp_dev: Rc<VecModel<SharedString>>,
-}
-
-fn update_exp_dev(state: Rc<ExposedState>) {
-    let _ = slint::spawn_local(async move {
-        let _ = state.tx.send(DeviceCmd::GetJoined);
-        state.exp_dev.set_vec(
-            state
-                .rx
-                .recv_async()
-                .await
-                .map(|v| v.iter().map(|s| SharedString::from(s)).collect())
-                .unwrap_or(vec![]),
-        )
-    });
-}
-
-fn update_connection_status(app: AppWindow, status_rx: Receiver<Status>) {
-    let _ = slint::spawn_local(async move {
-        let app_state = app.global::<AppState>();
-        loop {
-            if let Ok(status) = status_rx.recv_async().await {
-                match status {
-                    Status::Connection(s) => app_state.set_connected_to_server(s),
-                    Status::Text(t) => app_state.set_server_name(SharedString::from(t)),
-                }
-            };
-        }
-    });
 }
