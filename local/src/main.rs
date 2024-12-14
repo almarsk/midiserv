@@ -21,7 +21,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tasks::device_task;
 use tasks::login_task;
-use tasks::logout_task;
 use tasks::midi_task;
 use tokio::sync::Mutex;
 use util::Device;
@@ -62,8 +61,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     });
 
     // TASKS
-    logout_task(&rt, shutdown_rx.clone(), logout_rx.clone(), login.clone());
-
     let app_clone = app.clone_strong();
     update_connection_status(app_clone, status_rx);
     login_task(
@@ -73,8 +70,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         midi_tx.clone(),
         login_response_tx.clone(),
         login.clone(),
-        status_tx,
+        status_tx.clone(),
         passthrough.clone(),
+        logout_rx.clone(),
     );
     device_task(&rt, shutdown_rx.clone(), dvc_rx, dvc_rpns_tx);
     midi_task(&rt, shutdown_rx.clone(), midi.clone(), midi_rx);
@@ -180,13 +178,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     });
 
     let app_clone = app.clone_strong();
-    let logout_tx_clone = logout_tx.clone();
-    app.global::<AppState>().on_disconnect(move || {
-        let _ = logout_tx_clone.send(());
-        app_clone.global::<AppState>().set_logged_in(false);
-    });
-
-    let app_clone = app.clone_strong();
     let passthrough_clone = passthrough.clone();
     app.global::<AppState>().on_passthrough_click(move || {
         let app_clone = app_clone.clone_strong();
@@ -199,13 +190,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     });
 
     // STOP
+    let app_clone = app.clone_strong();
+    let logout_tx_clone = logout_tx.clone();
+    app.global::<AppState>().on_disconnect(move || {
+        let _ = logout_tx_clone.send(());
+        app_clone.global::<AppState>().set_logged_in(false);
+    });
+    let shutdown_tx_clone = shutdown_tx.clone();
     let logout_tx_clone = logout_tx.clone();
     app.window().on_close_requested(move || {
-        let r = logout_tx_clone.send(());
-
-        println!("logout sent {r:?}");
-
-        let _ = shutdown_tx.send(true);
+        let _ = logout_tx_clone.send(());
+        let _ = shutdown_tx_clone.send(true);
         CloseRequestResponse::HideWindow
     });
 

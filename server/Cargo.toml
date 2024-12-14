@@ -8,6 +8,7 @@ axum = { version = "0.7.9", features = ["ws", "tokio"] }
 axum-limit = "0.1.0-alpha.2"
 axum-server = { version = "0.7.1", features = ["tls-rustls"] }
 dotenv = "0.15.0"
+flume = "0.11.1"
 ring = "0.17.8"
 rustls = "0.23.20"
 serde = { version = "1.0.215", features = ["derive"] }

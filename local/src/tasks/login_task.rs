@@ -17,6 +17,7 @@ pub fn login_task(
     login_data: Arc<Mutex<Option<Login>>>,
     status_tx: Sender<Status>,
     passthrough: Arc<Mutex<bool>>,
+    logout: Receiver<()>,
 ) {
     rt.spawn(async move {
         loop {
@@ -40,6 +41,7 @@ pub fn login_task(
                             midi_tx.clone(),
                             status_tx.clone(),
                             passthrough.clone(),
+                            logout.clone(),
                         ).await {
                             let _ = login_tx.send(false);
                         };
@@ -56,6 +58,7 @@ async fn setup_connection(
     midi_tx: Sender<MidiCmd>,
     status_tx: Sender<Status>,
     passthrough: Arc<Mutex<bool>>,
+    logout: Receiver<()>,
 ) -> Result<(), ()> {
     let ws_url = format!("ws://{}/login?password={}", login.url, login.pass);
     match connect_async(ws_url).await {
@@ -63,23 +66,33 @@ async fn setup_connection(
             let _ = login_tx.send(true);
             let _ = status_tx.send(Status::Connection(true));
 
-            //ws_stream.close(None);
-            while let Some(message) = ws_stream.next().await {
-                match message {
-                    Ok(message) => match message {
-                        Message::Text(text) => {
-                            let _ = status_tx.send(Status::Text(text));
-                        }
-                        _ => {
-                            if *passthrough.lock().await {
-                                if let Some((cc, value)) = parse_message(message.into_data()) {
-                                    let _ = midi_tx.send(MidiCmd::Signal(cc, value));
-                                };
+            loop {
+                tokio::select! {
+                    message = ws_stream.next() => {
+                        if let Some(message) = message {
+                            match message {
+                                Ok(message) => match message {
+                                    Message::Text(text) => {
+                                        let _ = status_tx.send_async(Status::Text(text)).await;
+                                    }
+                                    _ => {
+                                        if *passthrough.lock().await {
+                                            if let Some((cc, value)) = parse_message(message.into_data()) {
+                                                let _ = midi_tx.send_async(MidiCmd::Signal(cc, value)).await;
+                                            };
+                                        }
+                                    }
+                                },
+                                Err(_) => {
+                                    let _ = status_tx.send_async(Status::Connection(false)).await;
+                                }
                             }
                         }
-                    },
-                    Err(_) => {
-                        let _ = status_tx.send(Status::Connection(false));
+                    }
+
+                    _ = logout.recv_async() => {
+                        let _ = ws_stream.close(None).await;
+                        break;
                     }
                 }
             }

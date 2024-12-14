@@ -1,10 +1,11 @@
-use axum::extract::ws::{Message, WebSocket};
+use axum::extract::ws::Message;
 use axum::extract::{Query, State};
 use axum::http::{StatusCode, Uri};
 use axum::routing::{any_service, MethodRouter};
 use axum::Json;
 use axum::{extract::WebSocketUpgrade, response::IntoResponse, routing::get, Router};
 use dotenv::dotenv;
+use flume::{bounded, Receiver, Sender};
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
@@ -16,28 +17,31 @@ use util::Device;
 
 struct AppState {
     connected: Mutex<bool>,
-    socket: Mutex<Option<WebSocket>>,
     _exposed_devices: Mutex<Vec<Device>>,
     password: String,
     server_name: String,
+    bridge_tx: Sender<Message>,
+    bridge_rx: Receiver<Message>,
 }
 
 #[tokio::main]
 async fn main() {
     dotenv().ok();
 
+    let (bridge_tx, bridge_rx): (Sender<Message>, Receiver<Message>) = bounded(10);
+
     let shared_state = Arc::new(AppState {
         connected: Mutex::new(false),
-        socket: Mutex::new(None),
         _exposed_devices: Mutex::new(Vec::new()),
         password: env::var("WS_PASSWORD").expect("WS_PASSWORD must be set"),
         server_name: env::var("SERVER_NAME").expect("SERVER_NAME must be set"),
+        bridge_tx,
+        bridge_rx,
     });
 
     let app = Router::new()
         .fallback(fallback)
         .route("/login", get(local_ws_handler))
-        .route("/logout", get(disconnect_local_ws_handle))
         .nest_service("/", serve_dir("build".to_string()))
         .route("/ws", get(user_ws_handler))
         .nest_service("/assets", serve_dir("build/assets/".to_string()))
@@ -83,31 +87,57 @@ async fn local_ws_handler(
         )
             .into_response();
     }
-
-    let already_connected = state.connected.lock().await;
-    if *already_connected {
-        return (
-            StatusCode::CONFLICT,
-            Json(json!({
-                "success": false,
-                "error": "Already connected",
-            })),
-        )
-            .into_response();
+    {
+        let already_connected = state.connected.lock().await;
+        if *already_connected {
+            return (
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "success": false,
+                    "error": "Already connected",
+                })),
+            )
+                .into_response();
+        }
     }
 
     let state = Arc::clone(&state);
     ws.on_upgrade(move |mut socket| async move {
         let _ = socket.send(Message::Text(state.server_name.clone())).await;
-        let mut guard = state.socket.lock().await;
-        *guard = Some(socket);
-        *state.connected.lock().await = true;
-    })
-}
 
-async fn disconnect_local_ws_handle(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    *Arc::clone(&state).socket.lock().await = None;
-    *Arc::clone(&state).connected.lock().await = false;
+        *state.connected.lock().await = true;
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    message = state.bridge_rx.recv_async() => {
+                            if let Ok(message) = message {
+                                let _ = socket.send(message).await;
+                            }
+                    }
+                    m = socket.recv() => {
+                        if let Some(m) = m {
+                            match m {
+                                Ok(m) => {
+                                    match m {
+                                        Message::Close(_) => {
+                                            *Arc::clone(&state).connected.lock().await = false;
+                                            break;
+                                        },
+                                        _ => {}
+                                    }
+                                },
+                                Err(_) => {
+                                    *Arc::clone(&state).connected.lock().await = false;
+                                    break;
+                                }
+                            }
+
+                        }
+                    }
+                }
+            }
+        });
+    })
 }
 
 async fn user_ws_handler(
@@ -117,11 +147,8 @@ async fn user_ws_handler(
     let state = Arc::clone(&state);
     ws.on_upgrade(move |mut user_socket| async {
         tokio::spawn(async move {
-            let mut guard = state.socket.lock().await;
             while let Some(Ok(m)) = user_socket.recv().await {
-                if let Some(ref mut local_socket) = *guard {
-                    let _ = local_socket.send(m).await;
-                }
+                let _ = state.bridge_tx.send(m);
             }
         });
     })
