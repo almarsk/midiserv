@@ -1,4 +1,7 @@
 exposed device communication
+    send requests from local to server about adding and removing devices
+    client gets informed if their device is removed
+    local highlights currently used devices
 dynamic user frontend
     simple server exposed device pool logic
     ui types scafolding

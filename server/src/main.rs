@@ -3,7 +3,12 @@ use axum::extract::{Query, State};
 use axum::http::{StatusCode, Uri};
 use axum::routing::{any_service, MethodRouter};
 use axum::Json;
-use axum::{extract::WebSocketUpgrade, response::IntoResponse, routing::get, Router};
+use axum::{
+    extract::WebSocketUpgrade,
+    response::IntoResponse,
+    routing::{get, post},
+    Router,
+};
 use dotenv::dotenv;
 use flume::{bounded, Receiver, Sender};
 use serde::Deserialize;
@@ -13,11 +18,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_http::services::ServeDir;
-use util::Device;
+use util::{Device, DeviceUpdate};
 
 struct AppState {
     connected: Mutex<bool>,
-    _exposed_devices: Mutex<Vec<Device>>,
+    exposed_devices: Mutex<Vec<Device>>,
     password: String,
     server_name: String,
     bridge_tx: Sender<Message>,
@@ -32,7 +37,7 @@ async fn main() {
 
     let shared_state = Arc::new(AppState {
         connected: Mutex::new(false),
-        _exposed_devices: Mutex::new(Vec::new()),
+        exposed_devices: Mutex::new(Vec::new()),
         password: env::var("WS_PASSWORD").expect("WS_PASSWORD must be set"),
         server_name: env::var("SERVER_NAME").expect("SERVER_NAME must be set"),
         bridge_tx,
@@ -42,6 +47,7 @@ async fn main() {
     let app = Router::new()
         .fallback(fallback)
         .route("/login", get(local_ws_handler))
+        .route("/devices", post(update_devices))
         .nest_service("/", serve_dir("build".to_string()))
         .route("/ws", get(user_ws_handler))
         .nest_service("/assets", serve_dir("build/assets/".to_string()))
@@ -138,6 +144,30 @@ async fn local_ws_handler(
             }
         });
     })
+}
+
+async fn update_devices(
+    State(state): State<Arc<AppState>>,
+    Json(update): Json<DeviceUpdate>,
+) -> impl IntoResponse {
+    let mut exposed_devices = state.exposed_devices.lock().await;
+
+    if update.add {
+        exposed_devices.push(update.device);
+    } else {
+        *exposed_devices = exposed_devices
+            .iter()
+            .filter(|device| device.cc != update.device.cc)
+            .map(|d| d.clone())
+            .collect::<Vec<Device>>()
+    }
+
+    println!("{exposed_devices:?}");
+
+    (
+        StatusCode::OK,
+        Json(json!(state.exposed_devices.lock().await.clone())),
+    )
 }
 
 async fn user_ws_handler(

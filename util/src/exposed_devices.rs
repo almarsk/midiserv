@@ -1,4 +1,5 @@
 use clipboard::{ClipboardContext, ClipboardProvider};
+use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 use strum::{EnumIter, IntoEnumIterator};
 
@@ -10,7 +11,7 @@ pub enum DeviceCmd {
     GetJoined,
 }
 
-#[derive(EnumIter, Clone)]
+#[derive(EnumIter, Clone, Serialize, Deserialize, Debug)]
 pub enum UIType {
     Empty,
     Check,
@@ -45,9 +46,9 @@ impl UIType {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Device {
-    cc: u8,
+    pub cc: u8,
     ui_type: UIType,
     description: String,
 }
@@ -128,4 +129,10 @@ impl ExposedDevices {
                 ctx.set_contents(self.get_joined_string().to_owned()).ok()
             });
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DeviceUpdate {
+    pub device: Device,
+    pub add: bool,
 }
