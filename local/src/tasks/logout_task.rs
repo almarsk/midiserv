@@ -23,8 +23,10 @@ pub fn logout_task(
                     }
                 }
                 _ = logout.recv_async() => {
+                    println!("logout");
                     if let Some(ref login) = *login_data.lock().await {
-                        let _ = Client::new().get(format!("http://{}/logout", &login.url)).send().await;
+                        println!("logout res {:?}",
+                            Client::new().get(format!("http://{}/logout", &login.url)).send().await);
                     }
                 }
             }

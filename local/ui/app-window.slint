@@ -46,9 +46,11 @@ export global AppState {
     callback paste();
     callback login(string, string);
     callback refresh_ports();
+    callback passthrough_click();
     in property <[string]> midi-ports;
     in property <bool> connected_to_server: false;
     in property <bool> logged_in: false;
+    in property <bool> passthrough: false;
     in property <string> server_name;
 }
 
@@ -98,7 +100,13 @@ export component AppWindow inherits Window {
                         name: AppState.server_name;
                     }
                 }
-                MenuItem{text: "passthrough allowed"; Switch{}}
+                MenuItem{
+                    text: "passthrough allowed";
+                    Switch{
+                        isOn: AppState.passthrough;
+                        clicked => { AppState.passthrough_click(); }
+                    }
+                }
                 LocalMidi{}
                 MenuItem{
                     text: "expose device";

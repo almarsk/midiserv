@@ -16,6 +16,7 @@ pub fn login_task(
     login_tx: Sender<bool>,
     login_data: Arc<Mutex<Option<Login>>>,
     status_tx: Sender<Status>,
+    passthrough: Arc<Mutex<bool>>,
 ) {
     rt.spawn(async move {
         loop {
@@ -37,7 +38,8 @@ pub fn login_task(
                             login,
                             login_tx.clone(),
                             midi_tx.clone(),
-                            status_tx.clone()
+                            status_tx.clone(),
+                            passthrough.clone(),
                         ).await {
                             let _ = login_tx.send(false);
                         };
@@ -53,6 +55,7 @@ async fn setup_connection(
     login_tx: Sender<bool>,
     midi_tx: Sender<MidiCmd>,
     status_tx: Sender<Status>,
+    passthrough: Arc<Mutex<bool>>,
 ) -> Result<(), ()> {
     let ws_url = format!("ws://{}/login?password={}", login.url, login.pass);
     match connect_async(ws_url).await {
@@ -63,13 +66,14 @@ async fn setup_connection(
                 match message {
                     Ok(message) => match message {
                         Message::Text(text) => {
-                            println!("{} m", text);
                             let _ = status_tx.send(Status::Text(text));
                         }
                         _ => {
-                            if let Some((cc, value)) = parse_message(message.into_data()) {
-                                let _ = midi_tx.send(MidiCmd::Signal(cc, value));
-                            };
+                            if *passthrough.lock().await {
+                                if let Some((cc, value)) = parse_message(message.into_data()) {
+                                    let _ = midi_tx.send(MidiCmd::Signal(cc, value));
+                                };
+                            }
                         }
                     },
                     Err(_) => {

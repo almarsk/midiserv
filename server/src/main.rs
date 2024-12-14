@@ -92,8 +92,7 @@ async fn local_ws_handler(
 
     let state = Arc::clone(&state);
     ws.on_upgrade(move |mut socket| async move {
-        println!("{}", state.server_name);
-        let _ = socket.send(Message::Text(state.server_name.clone()));
+        let _ = socket.send(Message::Text(state.server_name.clone())).await;
         let mut guard = state.socket.lock().await;
         *guard = Some(socket);
         *state.connected.lock().await = true;

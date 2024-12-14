@@ -40,6 +40,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let login: Arc<Mutex<Option<Login>>> = Arc::new(Mutex::new(None));
     let rt = tokio::runtime::Runtime::new().unwrap();
+    let passthrough = Arc::new(Mutex::new(false));
 
     set_ports(app.clone_strong(), midi.clone());
 
@@ -73,6 +74,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         login_response_tx.clone(),
         login.clone(),
         status_tx,
+        passthrough.clone(),
     );
     device_task(&rt, shutdown_rx.clone(), dvc_rx, dvc_rpns_tx);
     midi_task(&rt, shutdown_rx.clone(), midi.clone(), midi_rx);
@@ -184,10 +186,25 @@ fn main() -> Result<(), Box<dyn Error>> {
         app_clone.global::<AppState>().set_logged_in(false);
     });
 
+    let app_clone = app.clone_strong();
+    let passthrough_clone = passthrough.clone();
+    app.global::<AppState>().on_passthrough_click(move || {
+        let app_clone = app_clone.clone_strong();
+        let passthrough_clone = passthrough_clone.clone();
+        let _ = slint::spawn_local(async move {
+            let mut p = passthrough_clone.lock().await;
+            *p = !*p;
+            app_clone.global::<AppState>().set_passthrough(*p);
+        });
+    });
+
     // STOP
     let logout_tx_clone = logout_tx.clone();
     app.window().on_close_requested(move || {
-        let _ = logout_tx_clone.send(());
+        let r = logout_tx_clone.send(());
+
+        println!("logout sent {r:?}");
+
         let _ = shutdown_tx.send(true);
         CloseRequestResponse::HideWindow
     });
