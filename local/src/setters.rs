@@ -1,12 +1,13 @@
 use crate::{AppState, AppWindow};
 use flume::{Receiver, Sender};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
+use tokio::sync::Mutex;
 use util::{DeviceCmd, Midi, UIType};
 
-pub fn set_ports(app: AppWindow) {
+pub fn set_ports(app: AppWindow, midi: Arc<Mutex<Midi>>) {
     let ports = Rc::new(
-        Midi::new()
+        midi.blocking_lock()
             .get_ports()
             .iter()
             .map(|s| SharedString::from(s))

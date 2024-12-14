@@ -4,9 +4,12 @@ use flume::Receiver;
 use tokio::{runtime::Runtime, sync::Mutex};
 use util::{Midi, MidiCmd};
 
-pub fn midi_task(rt: &Runtime, shutdown: Receiver<bool>, midi: Midi, midi_rx: Receiver<MidiCmd>) {
-    let midi = Arc::new(Mutex::new(midi));
-    let midi = Arc::clone(&midi);
+pub fn midi_task(
+    rt: &Runtime,
+    shutdown: Receiver<bool>,
+    midi: Arc<Mutex<Midi>>,
+    midi_rx: Receiver<MidiCmd>,
+) {
     rt.spawn(async move {
         loop {
             tokio::select! {

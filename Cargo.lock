@@ -5262,7 +5262,6 @@ dependencies = [
  "clipboard",
  "midir",
  "strum",
- "strum_macros",
 ]
 
 [[package]]

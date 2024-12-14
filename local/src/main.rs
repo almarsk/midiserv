@@ -34,12 +34,14 @@ slint::include_modules!();
 fn main() -> Result<(), Box<dyn Error>> {
     // INIT
     let app = AppWindow::new()?;
-    set_ports(app.clone_strong());
+    let midi = Arc::new(Mutex::new(Midi::new()));
     let exp_dev = init_exposed_devices(app.clone_strong());
     init_ui_types(app.clone_strong());
 
     let login: Arc<Mutex<Option<Login>>> = Arc::new(Mutex::new(None));
     let rt = tokio::runtime::Runtime::new().unwrap();
+
+    set_ports(app.clone_strong(), midi.clone());
 
     // CHANNELS
     let (shutdown_tx, shutdown_rx): (Sender<bool>, Receiver<bool>) = bounded(10);
@@ -73,7 +75,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         status_tx,
     );
     device_task(&rt, shutdown_rx.clone(), dvc_rx, dvc_rpns_tx);
-    midi_task(&rt, shutdown_rx.clone(), Midi::new(), midi_rx);
+    midi_task(&rt, shutdown_rx.clone(), midi.clone(), midi_rx);
 
     // UI
     let tx_clone = midi_tx.clone();
@@ -122,8 +124,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     });
 
     let app_clone = app.clone_strong();
+    let midi_clone = midi.clone();
     app.global::<AppState>().on_refresh_ports(move || {
-        set_ports(app_clone.clone_strong());
+        set_ports(app_clone.clone_strong(), midi_clone.clone());
     });
 
     let state_clone = state.clone();
@@ -163,7 +166,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let app_clone = app.clone_strong();
     app.global::<AppState>().on_login(move |url, pass| {
-        set_ports(app_clone.clone_strong());
+        set_ports(app_clone.clone_strong(), midi.clone());
         let _ = login_tx.send(Login {
             url: url.to_string(),
             pass: pass.to_string(),
