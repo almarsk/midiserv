@@ -62,6 +62,8 @@ async fn setup_connection(
         Ok((mut ws_stream, _)) => {
             let _ = login_tx.send(true);
             let _ = status_tx.send(Status::Connection(true));
+
+            //ws_stream.close(None);
             while let Some(message) = ws_stream.next().await {
                 match message {
                     Ok(message) => match message {

@@ -74,20 +74,26 @@ async fn local_ws_handler(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     if query.password != state.password {
-        return Json(json!({
-            "success": false,
-            "error": "Invalid password",
-        }))
-        .into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({
+                "success": false,
+                "error": "Invalid password",
+            })),
+        )
+            .into_response();
     }
 
     let already_connected = state.connected.lock().await;
     if *already_connected {
-        return Json(json!({
-            "success": false,
-            "error": "Already connected",
-        }))
-        .into_response();
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "success": false,
+                "error": "Already connected",
+            })),
+        )
+            .into_response();
     }
 
     let state = Arc::clone(&state);
