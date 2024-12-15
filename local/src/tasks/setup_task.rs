@@ -4,9 +4,11 @@ use flume::{Receiver, Sender};
 use futures_util::stream::StreamExt;
 use tokio::{runtime::Runtime, sync::Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use util::MidiCmd;
+use util::{DeviceCmd, MidiCmd};
 
 use crate::{Login, Status};
+
+use super::device_task;
 
 pub fn login_task(
     rt: &Runtime,
@@ -18,6 +20,8 @@ pub fn login_task(
     status_tx: Sender<Status>,
     passthrough: Arc<Mutex<bool>>,
     logout: Receiver<()>,
+    dvc_rx: Receiver<DeviceCmd>,
+    dvc_rpns_tx: Sender<Vec<String>>,
 ) {
     rt.spawn(async move {
         loop {
@@ -42,6 +46,9 @@ pub fn login_task(
                             status_tx.clone(),
                             passthrough.clone(),
                             logout.clone(),
+                            shutdown_rx.clone(),
+                            dvc_rx.clone(),
+                            dvc_rpns_tx.clone()
                         ).await {
                             let _ = login_tx.send(false);
                         };
@@ -59,12 +66,18 @@ async fn setup_connection(
     status_tx: Sender<Status>,
     passthrough: Arc<Mutex<bool>>,
     logout: Receiver<()>,
+    shutdown: Receiver<bool>,
+    dvc_rx: Receiver<DeviceCmd>,
+    dvc_rpns_tx: Sender<Vec<String>>,
 ) -> Result<(), ()> {
     let ws_url = format!("ws://{}/login?password={}", login.url, login.pass);
+
     match connect_async(ws_url).await {
         Ok((mut ws_stream, _)) => {
             let _ = login_tx.send(true);
             let _ = status_tx.send(Status::Connection(true));
+
+            device_task(shutdown.clone(), dvc_rx, dvc_rpns_tx, login.clone());
 
             loop {
                 tokio::select! {

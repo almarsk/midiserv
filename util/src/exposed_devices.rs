@@ -1,12 +1,13 @@
 use clipboard::{ClipboardContext, ClipboardProvider};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 use strum::{EnumIter, IntoEnumIterator};
 
+use crate::Login;
+
 pub enum DeviceCmd {
-    Push(Device),
-    Remove(usize),
-    Clear,
+    Update(DeviceUpdate),
     CopyToClipBoard,
     GetJoined,
 }
@@ -73,53 +74,57 @@ impl Device {
 
 pub struct ExposedDevices {
     joined: Vec<String>,
-    devices: Vec<Device>,
+
+    login: Login,
 }
 
 impl ExposedDevices {
-    pub fn new() -> Self {
+    pub fn new(login: Login) -> Self {
         ExposedDevices {
             joined: vec![],
-            devices: vec![],
+
+            login,
         }
     }
 
-    fn update_joined(&mut self) {
-        self.joined = self
-            .devices
-            .iter()
-            .map(|d| format!("{}|{}|{}", d.cc, d.ui_type, d.description))
-            .collect::<Vec<String>>()
-    }
-
     pub fn get_joined(&self) -> Vec<String> {
+        println!("{:?}", self.joined);
         self.joined.clone()
     }
 
     pub fn get_joined_string(&self) -> String {
-        self.devices
+        self.joined
             .iter()
             .map(|d| d.clone())
-            .fold(String::new(), |acc, d| {
-                format!("{}{},{},{}\n", acc, d.cc, d.ui_type, d.description)
-            })
+            .fold(String::new(), |acc, d| format!("{}\n{}", acc, d))
     }
 
     pub fn clear(&mut self) {
         self.joined = vec![];
-        self.devices = vec![];
     }
 
-    pub fn push(&mut self, device: Device) {
-        self.devices.push(device);
-        self.update_joined();
-    }
+    pub async fn update_device(&mut self, device: DeviceUpdate) -> Result<(), reqwest::Error> {
+        // send request
+        let response = Client::new()
+            .post(format!(
+                "http://{}/devices?password={}",
+                self.login.url, self.login.pass
+            ))
+            .json(&device)
+            .send()
+            .await?;
 
-    pub fn remove(&mut self, index: usize) {
-        if let Some(_) = self.devices.get(index) {
-            self.devices.remove(index);
-            self.update_joined();
+        if let Ok(devices) = response.json::<Vec<Device>>().await {
+            println!("{devices:?}");
+            self.joined = devices
+                .iter()
+                .map(|d| format!("{}|{}|{}", d.cc, d.ui_type, d.description))
+                .collect::<Vec<String>>();
+        } else {
+            println!("problema");
         }
+
+        Ok(())
     }
 
     pub fn copy_to_clipboard(&self) {
@@ -132,7 +137,8 @@ impl ExposedDevices {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct DeviceUpdate {
-    pub device: Device,
-    pub add: bool,
+pub enum DeviceUpdate {
+    Add(Device),
+    Remove(u8),
+    Clear,
 }

@@ -64,7 +64,12 @@ pub fn update_connection_status(app: AppWindow, status_rx: Receiver<Status>) {
         loop {
             if let Ok(status) = status_rx.recv_async().await {
                 match status {
-                    Status::Connection(s) => app_state.set_connected_to_server(s),
+                    Status::Connection(s) => {
+                        if !s {
+                            println!("todo clear local state");
+                        }
+                        app_state.set_connected_to_server(s)
+                    }
                     Status::Text(t) => app_state.set_server_name(SharedString::from(t)),
                 }
             };

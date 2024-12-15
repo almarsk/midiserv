@@ -19,12 +19,13 @@ use slint::ComponentHandle;
 use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
-use tasks::device_task;
 use tasks::login_task;
 use tasks::midi_task;
 use tokio::sync::Mutex;
 use util::Device;
 use util::DeviceCmd;
+use util::DeviceUpdate;
+use util::Login;
 use util::Midi;
 use util::MidiCmd;
 
@@ -39,8 +40,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let login: Arc<Mutex<Option<Login>>> = Arc::new(Mutex::new(None));
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let passthrough = Arc::new(Mutex::new(false));
-
+    let passthrough = Arc::new(Mutex::new(true));
     set_ports(app.clone_strong(), midi.clone());
 
     // CHANNELS
@@ -73,8 +73,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         status_tx.clone(),
         passthrough.clone(),
         logout_rx.clone(),
+        dvc_rx.clone(),
+        dvc_rpns_tx.clone(),
     );
-    device_task(&rt, shutdown_rx.clone(), dvc_rx, dvc_rpns_tx);
+    //device_task(&rt, shutdown_rx.clone(), dvc_rx, dvc_rpns_tx, login.clone());
     midi_task(&rt, shutdown_rx.clone(), midi.clone(), midi_rx);
 
     // UI
@@ -103,7 +105,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             ) {
                 let state_clone = state_clone.clone();
                 let _ = slint::spawn_local(async move {
-                    let _ = state_clone.tx.send(DeviceCmd::Push(new_device));
+                    let _ = state_clone
+                        .tx
+                        .send(DeviceCmd::Update(DeviceUpdate::Add(new_device)));
 
                     update_exp_dev(state_clone.to_owned());
                 });
@@ -113,7 +117,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let state_clone = state.clone();
     app.global::<AppState>().on_hide_device(move |i| {
         if let Ok(index) = i.parse::<usize>() {
-            let _ = state_clone.tx.send(DeviceCmd::Remove(index));
+            let _ = state_clone
+                .tx
+                .send(DeviceCmd::Update(DeviceUpdate::Remove(index as u8)));
             update_exp_dev(state_clone.to_owned());
         }
     });
@@ -148,7 +154,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 ui_type.to_string(),
                                 desc.to_string(),
                             ) {
-                                let _ = state_clone.tx.send(DeviceCmd::Push(new_device));
+                                let _ = state_clone
+                                    .tx
+                                    .send(DeviceCmd::Update(DeviceUpdate::Add(new_device)));
                             }
                         }
                     }
@@ -160,7 +168,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let state_clone = state.clone();
     app.global::<AppState>().on_clear_all(move || {
-        let _ = state_clone.tx.send(DeviceCmd::Clear);
+        let _ = state_clone.tx.send(DeviceCmd::Update(DeviceUpdate::Clear));
         update_exp_dev(state_clone.to_owned());
     });
 
@@ -215,10 +223,4 @@ fn run_app(app: AppWindow, rt: tokio::runtime::Runtime) -> Result<(), Box<dyn st
     });
 
     Ok(())
-}
-
-#[derive(Clone)]
-struct Login {
-    pub url: String,
-    pub pass: String,
 }

@@ -5263,6 +5263,7 @@ version = "0.1.0"
 dependencies = [
  "clipboard",
  "midir",
+ "reqwest",
  "serde",
  "serde_json",
  "strum",

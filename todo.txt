@@ -1,5 +1,6 @@
 exposed device communication
-    send requests from local to server about adding and removing devices
+    when connection closes, state is cleaned on both ends (server done, local todo)
+    wait for response before joining string - refactor GetJoined - dissolve into update branch in device task
     client gets informed if their device is removed
     local highlights currently used devices
 dynamic user frontend

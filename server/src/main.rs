@@ -13,6 +13,7 @@ use dotenv::dotenv;
 use flume::{bounded, Receiver, Sender};
 use serde::Deserialize;
 use serde_json::json;
+use std::collections::HashMap;
 use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -22,7 +23,7 @@ use util::{Device, DeviceUpdate};
 
 struct AppState {
     connected: Mutex<bool>,
-    exposed_devices: Mutex<Vec<Device>>,
+    exposed_devices: Mutex<HashMap<u8, Device>>,
     password: String,
     server_name: String,
     bridge_tx: Sender<Message>,
@@ -37,7 +38,7 @@ async fn main() {
 
     let shared_state = Arc::new(AppState {
         connected: Mutex::new(false),
-        exposed_devices: Mutex::new(Vec::new()),
+        exposed_devices: Mutex::new(HashMap::new()),
         password: env::var("WS_PASSWORD").expect("WS_PASSWORD must be set"),
         server_name: env::var("SERVER_NAME").expect("SERVER_NAME must be set"),
         bridge_tx,
@@ -126,14 +127,15 @@ async fn local_ws_handler(
                                 Ok(m) => {
                                     match m {
                                         Message::Close(_) => {
-                                            *Arc::clone(&state).connected.lock().await = false;
+                                            *state.connected.lock().await = false;
+                                            state.exposed_devices.lock().await.clear();
                                             break;
                                         },
                                         _ => {}
                                     }
                                 },
                                 Err(_) => {
-                                    *Arc::clone(&state).connected.lock().await = false;
+                                    *state.connected.lock().await = false;
                                     break;
                                 }
                             }
@@ -148,26 +150,40 @@ async fn local_ws_handler(
 
 async fn update_devices(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<ConnectQuery>,
     Json(update): Json<DeviceUpdate>,
 ) -> impl IntoResponse {
+    if query.password != state.password {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({
+                "success": false,
+                "error": "Invalid password",
+            })),
+        );
+    }
     let mut exposed_devices = state.exposed_devices.lock().await;
 
-    if update.add {
-        exposed_devices.push(update.device);
-    } else {
-        *exposed_devices = exposed_devices
-            .iter()
-            .filter(|device| device.cc != update.device.cc)
-            .map(|d| d.clone())
-            .collect::<Vec<Device>>()
+    match update {
+        DeviceUpdate::Add(device) => {
+            exposed_devices.insert(device.cc, device);
+        }
+        DeviceUpdate::Remove(index) => {
+            exposed_devices.remove(&index);
+        }
+        DeviceUpdate::Clear => exposed_devices.clear(),
     }
 
-    println!("{exposed_devices:?}");
+    let mut exp_dev = exposed_devices
+        .values()
+        .map(|d| d.clone())
+        .collect::<Vec<Device>>()
+        .clone();
+    exp_dev.sort_by_key(|d| d.cc);
 
-    (
-        StatusCode::OK,
-        Json(json!(state.exposed_devices.lock().await.clone())),
-    )
+    println!("{:?}", exp_dev);
+
+    (StatusCode::OK, Json(json!(exp_dev)))
 }
 
 async fn user_ws_handler(
@@ -178,7 +194,9 @@ async fn user_ws_handler(
     ws.on_upgrade(move |mut user_socket| async {
         tokio::spawn(async move {
             while let Some(Ok(m)) = user_socket.recv().await {
-                let _ = state.bridge_tx.send(m);
+                if *state.connected.lock().await {
+                    let _ = state.bridge_tx.send(m);
+                }
             }
         });
     })
