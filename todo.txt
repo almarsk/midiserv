@@ -1,6 +1,6 @@
 exposed device communication
-    when connection closes, state is cleaned on both ends (server done, local todo)
-    wait for response before joining string - refactor GetJoined - dissolve into update branch in device task
+    connections can be pasted
+    when connection closes, state is cleaned on both ends
     client gets informed if their device is removed
     local highlights currently used devices
 dynamic user frontend

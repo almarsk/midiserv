@@ -4,24 +4,19 @@ use flume::{Receiver, Sender};
 use futures_util::stream::StreamExt;
 use tokio::{runtime::Runtime, sync::Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use util::{DeviceCmd, MidiCmd};
+use util::MidiCmd;
 
 use crate::{Login, Status};
 
-use super::device_task;
-
-pub fn login_task(
+pub fn setup_task(
     rt: &Runtime,
     shutdown_rx: Receiver<bool>,
     login_rx: Receiver<Login>,
     midi_tx: Sender<MidiCmd>,
     login_tx: Sender<bool>,
-    login_data: Arc<Mutex<Option<Login>>>,
     status_tx: Sender<Status>,
     passthrough: Arc<Mutex<bool>>,
     logout: Receiver<()>,
-    dvc_rx: Receiver<DeviceCmd>,
-    dvc_rpns_tx: Sender<Vec<String>>,
 ) {
     rt.spawn(async move {
         loop {
@@ -35,21 +30,14 @@ pub fn login_task(
                 }
                 login = login_rx.recv_async() => {
                     if let Ok(login) = login {
-                        {
-                            let mut guard = login_data.lock().await;
-                            *guard = Some(login.clone());
-                        };
-                        if let Err(_) = setup_connection(
+                        if setup_connection(
                             login,
                             login_tx.clone(),
                             midi_tx.clone(),
                             status_tx.clone(),
                             passthrough.clone(),
                             logout.clone(),
-                            shutdown_rx.clone(),
-                            dvc_rx.clone(),
-                            dvc_rpns_tx.clone()
-                        ).await {
+                        ).await.is_err() {
                             let _ = login_tx.send(false);
                         };
                     }
@@ -66,9 +54,6 @@ async fn setup_connection(
     status_tx: Sender<Status>,
     passthrough: Arc<Mutex<bool>>,
     logout: Receiver<()>,
-    shutdown: Receiver<bool>,
-    dvc_rx: Receiver<DeviceCmd>,
-    dvc_rpns_tx: Sender<Vec<String>>,
 ) -> Result<(), ()> {
     let ws_url = format!("ws://{}/login?password={}", login.url, login.pass);
 
@@ -76,8 +61,6 @@ async fn setup_connection(
         Ok((mut ws_stream, _)) => {
             let _ = login_tx.send(true);
             let _ = status_tx.send(Status::Connection(true));
-
-            device_task(shutdown.clone(), dvc_rx, dvc_rpns_tx, login.clone());
 
             loop {
                 tokio::select! {
@@ -119,7 +102,7 @@ async fn setup_connection(
 }
 
 fn parse_message(data: Vec<u8>) -> Option<(u8, u8)> {
-    let cc = data.get(0)?;
+    let cc = data.first()?;
     let value = data.get(1)?;
     Some((*cc, *value))
 }

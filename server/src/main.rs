@@ -165,18 +165,22 @@ async fn update_devices(
     let mut exposed_devices = state.exposed_devices.lock().await;
 
     match update {
-        DeviceUpdate::Add(device) => {
-            exposed_devices.insert(device.cc, device);
+        DeviceUpdate::Add(additions) => {
+            additions.into_iter().for_each(|a| {
+                let _ = exposed_devices.insert(a.cc, a);
+            });
         }
-        DeviceUpdate::Remove(index) => {
-            exposed_devices.remove(&index);
+        DeviceUpdate::Remove(removals) => {
+            removals.into_iter().for_each(|r| {
+                let _ = exposed_devices.remove(&(r as u8));
+            });
         }
         DeviceUpdate::Clear => exposed_devices.clear(),
-    }
+    };
 
     let mut exp_dev = exposed_devices
         .values()
-        .map(|d| d.clone())
+        .cloned()
         .collect::<Vec<Device>>()
         .clone();
     exp_dev.sort_by_key(|d| d.cc);

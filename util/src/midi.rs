@@ -69,3 +69,9 @@ impl Midi {
             .and_then(|c| c.send(&[CC_MESSAGE, controller, value]).ok());
     }
 }
+
+impl Default for Midi {
+    fn default() -> Self {
+        Self::new()
+    }
+}

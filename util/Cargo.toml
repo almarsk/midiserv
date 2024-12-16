@@ -9,6 +9,7 @@ midir = "0.10.1"
 reqwest = { version = "0.12.9", features = ["json"] }
 serde = { version = "1.0.216", features = ["derive"] }
 serde_json = "1.0.133"
+slint = "1.8.0"
 strum = { version = "0.26.3", features = ["derive"] }
 
 [lib]
