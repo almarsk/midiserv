@@ -2912,7 +2912,6 @@ name = "local"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "clipboard",
  "csv",
  "flume",
  "futures",
@@ -5262,6 +5261,7 @@ name = "util"
 version = "0.1.0"
 dependencies = [
  "clipboard",
+ "csv",
  "midir",
  "reqwest",
  "serde",

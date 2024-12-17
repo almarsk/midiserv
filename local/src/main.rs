@@ -52,8 +52,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             .set_passthrough(*passthrough_clone.lock().await);
     });
 
-    set_ports(app.clone_strong(), midi.clone());
-
     // CHANNELS
     let (shutdown_tx, shutdown_rx): (Sender<bool>, Receiver<bool>) = bounded(10);
     let (midi_tx, midi_rx): (Sender<MidiCmd>, Receiver<MidiCmd>) = bounded(10);
@@ -67,7 +65,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // TASKS
     let app_clone = app.clone_strong();
-    connection_status(app_clone, status_rx);
+    connection_status(app_clone, status_rx, device_tx.clone());
     setup_task(
         &rt,
         shutdown_rx.clone(),
@@ -152,8 +150,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
+    let device_tx_clone = device_tx.clone();
     app.global::<AppState>().on_paste(move || {
-        // state.update
+        let _ = device_tx_clone.send(DeviceCmd::Paste);
     });
 
     let device_tx_clone = device_tx.clone();

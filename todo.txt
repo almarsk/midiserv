@@ -1,13 +1,11 @@
 exposed device communication
-    connections can be pasted
     when connection closes, state is cleaned on both ends
-    client gets informed if their device is removed
-    local highlights currently used devices
 dynamic user frontend
-    simple server exposed device pool logic
     ui types scafolding
     reset button in ui
-    advanced server exposed device pool logic
+    server exposed device pool logic
+    client gets informed if their device is removed
+    local highlights currently used devices
 sessions
     login from local starts a separate session
     view and stop session enpoints

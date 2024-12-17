@@ -1,9 +1,9 @@
 use crate::{AppState, AppWindow};
-use flume::Receiver;
+use flume::{Receiver, Sender};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use std::{rc::Rc, sync::Arc};
 use tokio::sync::Mutex;
-use util::{Midi, UIType};
+use util::{DeviceCmd, DeviceUpdate, Midi, UIType};
 
 pub fn set_ports(app: AppWindow, midi: Arc<Mutex<Midi>>) {
     let ports = Rc::new(
@@ -32,7 +32,11 @@ pub enum Status {
     Text(String),
 }
 
-pub fn connection_status(app: AppWindow, status_rx: Receiver<Status>) {
+pub fn connection_status(
+    app: AppWindow,
+    status_rx: Receiver<Status>,
+    device_tx: Sender<DeviceCmd>,
+) {
     let _ = slint::spawn_local(async move {
         let app_state = app.global::<AppState>();
         loop {
@@ -40,7 +44,7 @@ pub fn connection_status(app: AppWindow, status_rx: Receiver<Status>) {
                 match status {
                     Status::Connection(s) => {
                         if !s {
-                            println!("todo clear local state");
+                            let _ = device_tx.send_async(DeviceCmd::Update(DeviceUpdate::Clear));
                         }
                         app_state.set_connected_to_server(s)
                     }

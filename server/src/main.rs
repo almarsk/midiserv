@@ -185,7 +185,7 @@ async fn update_devices(
         .clone();
     exp_dev.sort_by_key(|d| d.cc);
 
-    println!("{:?}", exp_dev);
+    //println!("{:?}", exp_dev);
 
     (StatusCode::OK, Json(json!(exp_dev)))
 }

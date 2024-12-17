@@ -1,6 +1,6 @@
 use flume::{Receiver, Sender};
 use tokio::runtime::Runtime;
-use util::{Device, DeviceCmd, DeviceUpdate};
+use util::{get_clipboard_content, Device, DeviceCmd, DeviceUpdate};
 
 use crate::exposed_state::ExposedState;
 
@@ -24,26 +24,32 @@ pub fn device_task(
                 exposed_device_command = command.recv_async() => {
                     if let Ok(e) = exposed_device_command {
 
-                        println!("{:?}", e);
-
                         match e {
                             DeviceCmd::Login(login) => {state.login = Some(login);},
                             DeviceCmd::CopyToClipboard => {let _ = &state.copy_to_clipboard();},
+                            DeviceCmd::Paste => {
+                                if let Some(content) = get_clipboard_content() {
+                                    let _ = &state.paste(slint_device_tx.clone(), content).await;
+                                };
+                            },
                             DeviceCmd::Update(update) => {
 
-                                let update = if let DeviceUpdate::Remove(indexes) = update {
-                                    DeviceUpdate::Remove(
-                                        indexes.into_iter()
-                                            .filter_map(|i| state.devices.get(i))
-                                            .map(|d| d.cc as usize).collect::<Vec<_>>())
-                                } else {
-                                    update
+                                let update = match update {
+                                    DeviceUpdate::Remove(indexes) => {
+                                        DeviceUpdate::Remove(
+                                            indexes.into_iter()
+                                                .filter_map(|i| state.devices.get(i))
+                                                .map(|d| d.cc as usize).collect::<Vec<_>>())
+                                    },
+                                    DeviceUpdate::Clear => {
+                                        state.devices.clear();
+                                        DeviceUpdate::Clear
+                                    },
+                                    u => u,
                                 };
 
-                                println!("{:?}", update);
-
                                 let _ = &state.update_device(update, slint_device_tx.clone()).await;
-                            }
+                            },
                         }
                     }
                 }
